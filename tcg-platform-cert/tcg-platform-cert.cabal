@@ -1,0 +1,100 @@
+cabal-version: 1.18
+
+name:          tcg-platform-cert
+version:       0.1.0.0
+license:       BSD3
+license-file:  LICENSE
+copyright:     Toru Tomita <toru.tomita@gmail.com>
+maintainer:    Toru Tomita <toru.tomita@gmail.com>
+author:        Toru Tomita <toru.tomita@gmail.com>
+synopsis:      TCG Platform Certificate support for Haskell
+description:
+    This library provides support for TCG (Trusted Computing Group) Platform 
+    Certificates and Delta Platform Certificates as defined in the IWG Platform 
+    Certificate Profile v1.1.
+    .
+    Platform Certificates are attribute certificates that bind platform 
+    configuration information to a platform identity. Delta Platform Certificates 
+    track changes in platform configuration over time.
+    .
+    The library includes:
+    .
+    * ASN.1 encoding/decoding for Platform and Delta Platform Certificates
+    * Component identification and platform configuration structures  
+    * TPM and platform-specific attributes
+    * Integration with existing X.509 certificate infrastructure
+
+category:      Cryptography, Data, System
+build-type:    Simple
+stability:     experimental
+
+source-repository head
+  type: git
+  location: https://github.com/toru-tomita/tcg-platform-cert
+
+library
+  default-language: Haskell2010
+  ghc-options: -Wall
+
+  build-depends:
+      base >= 4.9 && < 5
+    , bytestring
+    , crypton-asn1-types >= 0.4.1
+    , crypton-asn1-encoding >= 0.10.0
+    , crypton-asn1-parse >= 0.10.0
+    , crypton
+    , crypton-x509 >= 1.7.6
+    , time-hourglass
+    , memory
+    , crypton-pem
+    , containers
+    , mtl
+
+  exposed-modules:
+      Data.X509.TCG.OID
+    , Data.X509.TCG.Platform
+    , Data.X509.TCG.Component
+    , Data.X509.TCG.Delta
+    , Data.X509.TCG.Attributes
+    , Data.X509.TCG.Operations
+    , Data.X509.TCG.Validation
+    , Data.X509.TCG.Utils
+    , Data.X509.TCG
+    , Data.X509.TCG.Certification
+
+  hs-source-dirs: .
+
+test-suite test-tcg-platform-cert
+  type: exitcode-stdio-1.0
+  main-is: Tests.hs
+  hs-source-dirs: Tests
+  default-language: Haskell2010
+  ghc-options: -Wall -threaded
+  
+  other-modules:
+      Tests.Attributes
+    , Tests.Component
+    , Tests.Delta
+    , Tests.OID
+    , Tests.Operations
+    , Tests.Platform
+    , Tests.Utils
+    , Tests.Validation
+    , Tests.Properties
+    , Tests.Arbitrary
+    , Tests.SBV
+
+  build-depends:
+      tcg-platform-cert
+    , base
+    , bytestring
+    , crypton-asn1-types
+    , crypton-asn1-encoding
+    , crypton-x509
+    , crypton
+    , tasty
+    , tasty-quickcheck
+    , tasty-hunit
+    , QuickCheck
+    , time-hourglass
+    , sbv >= 8.0

@@ -1,0 +1,74 @@
+# Enterprise Server Delta Platform Configuration
+# Based on IWG Platform Certificate Profile v1.1 - Delta Certificate Extension
+# This delta certificate tracks changes from the base enterprise-server.yaml
+
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "Dell Technologies Inc."
+model: "PowerEdge R750"
+version: "2.1.4"  # Version update from 2.1.3
+serial: "PE750-ENT-2024-001"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 365   # Shorter validity for delta certificate
+keySize: 3072       # Maintain security level
+
+# === Extended Platform Information (OPTIONAL) ===
+platformConfigUri: "https://dell.com/platform-config/poweredge-r750/pcr-values-v2"
+platformClass: "00000001"        # Enterprise Server Platform Class
+specificationVersion: "1.1"      # IWG Platform Certificate Profile v1.1
+majorVersion: 2                  # Platform major version
+minorVersion: 1                  # Platform minor version  
+patchVersion: 4                  # Updated patch version
+platformQualifier: "Enterprise"  # Enterprise-grade platform
+
+# === Delta-Specific Configuration ===
+# Base certificate reference (now supported in YAML)
+baseCertificateSerial: "PE750-ENT-2024-001"
+deltaSequenceNumber: 1
+changeDescription: "Firmware update and memory expansion"
+
+# === Updated Platform Components ===
+# Only components that have changed from the base certificate
+components:
+  # Updated System Firmware - Version change
+  - class: "00130003"
+    manufacturer: "Dell Technologies Inc."
+    model: "PowerEdge UEFI BIOS"
+    serial: "BIOS-PE750-001"
+    revision: "2.17.0"  # Updated from 2.15.2
+    
+  # Additional Memory Module - New component
+  - class: "00060004"
+    manufacturer: "Samsung Electronics"
+    model: "M393A4K40DB3-CWE"
+    serial: "MEM-PE750-003"  # New serial number
+    revision: "32GB DDR4-3200"
+    
+  # Additional Memory Module - New component  
+  - class: "00060004"
+    manufacturer: "Samsung Electronics"
+    model: "M393A4K40DB3-CWE"
+    serial: "MEM-PE750-004"  # New serial number
+    revision: "32GB DDR4-3200"
+    
+  # Updated Network Interface Card - Hardware revision change
+  - class: "00080001"
+    manufacturer: "Broadcom Inc."
+    model: "NetXtreme BCM57414"
+    serial: "NIC-PE750-001"
+    revision: "25GbE Dual Port Rev B0"  # Updated revision
+    
+  # New Additional NIC - Added component
+  - class: "00080001"
+    manufacturer: "Intel Corporation"
+    model: "Ethernet Controller X710"
+    serial: "NIC-PE750-002"  # New component
+    revision: "10GbE Quad Port"
+
+# === Change Summary ===
+# Changes from base certificate:
+# 1. UEFI BIOS firmware update: 2.15.2 → 2.17.0
+# 2. Memory expansion: 64GB → 128GB (added 2x32GB modules)
+# 3. Network card revision update: Rev A0 → Rev B0
+# 4. Additional 10GbE network card added
+# 5. Platform version update: 2.1.3 → 2.1.4

@@ -1,0 +1,114 @@
+# Workstation Platform Configuration
+# Based on IWG Platform Certificate Profile v1.1 and TCG Component Class Registry v1.0
+
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "Hewlett-Packard Enterprise"
+model: "Z4 G5 Workstation"
+version: "3.2.1"
+serial: "WS-HPE-Z4G5-2024-456"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 1460  # 4 years for workstation lifecycle
+keySize: 2048       # Standard security
+
+# === Extended Platform Information (OPTIONAL) ===
+platformConfigUri: "https://hpe.com/platform-config/z4-g5/pcr-values"
+platformClass: "00000002"           # Workstation Platform Class
+specificationVersion: "1.1"         # IWG Platform Certificate Profile v1.1
+majorVersion: 3                     # Platform major version
+minorVersion: 2                     # Platform minor version  
+patchVersion: 1                     # Platform patch version
+platformQualifier: "Professional"   # Professional workstation
+
+# === Platform Components (OPTIONAL) ===
+components:
+  # Workstation Motherboard
+  - class: "00030003"
+    manufacturer: "Hewlett-Packard Enterprise"
+    model: "Z4 G5 System Board"
+    serial: "MB-Z4G5-456"
+    revision: "Rev 1.04"
+    
+  # Intel Xeon Workstation CPU
+  - class: "00010002"
+    manufacturer: "Intel Corporation"
+    model: "Xeon W-2245"
+    serial: "CPU-Z4G5-456"
+    revision: "8-Core 3.9GHz"
+    
+  # ECC Memory Module 1
+  - class: "00060004"
+    manufacturer: "SK Hynix Inc."
+    model: "HMA84GR7CJR4N-XN"
+    serial: "MEM-Z4G5-456-01"
+    revision: "32GB DDR4-3200 ECC"
+    
+  # ECC Memory Module 2
+  - class: "00060004"
+    manufacturer: "SK Hynix Inc."
+    model: "HMA84GR7CJR4N-XN"
+    serial: "MEM-Z4G5-456-02"
+    revision: "32GB DDR4-3200 ECC"
+    
+  # Professional Graphics Card
+  - class: "00020002"
+    manufacturer: "NVIDIA Corporation"
+    model: "RTX A4000"
+    serial: "GPU-Z4G5-456"
+    revision: "16GB GDDR6"
+    
+  # NVMe Primary Storage
+  - class: "00070003"
+    manufacturer: "Western Digital"
+    model: "WD Black SN850X"
+    serial: "SSD-Z4G5-456-01"
+    revision: "2TB NVMe PCIe 4.0"
+    
+  # SATA Secondary Storage
+  - class: "00070001"
+    manufacturer: "Seagate Technology"
+    model: "IronWolf Pro"
+    serial: "HDD-Z4G5-456-01"
+    revision: "4TB 7200RPM"
+    
+  # Network Interface - Ethernet
+  - class: "00080001"
+    manufacturer: "Intel Corporation"
+    model: "I219-LM Ethernet"
+    serial: "NIC-Z4G5-456"
+    revision: "Gigabit Ethernet"
+    
+  # Wireless Network Interface
+  - class: "00080002"
+    manufacturer: "Intel Corporation"
+    model: "AX201 WiFi 6"
+    serial: "WIFI-Z4G5-456"
+    revision: "802.11ax WiFi 6"
+    
+  # Audio Controller
+  - class: "000E0001"
+    manufacturer: "Realtek Semiconductor"
+    model: "ALC285 Audio Codec"
+    serial: "AUDIO-Z4G5-456"
+    revision: "High Definition Audio"
+    
+  # UEFI System Firmware
+  - class: "00130003"
+    manufacturer: "Hewlett-Packard Enterprise"
+    model: "Z4 G5 UEFI BIOS"
+    serial: "BIOS-Z4G5-456"
+    revision: "P42 Ver. 02.26"
+    
+  # TPM Security Module
+  - class: "00040009"
+    manufacturer: "Infineon Technologies"
+    model: "SLB9670VQ2.0"
+    serial: "TPM-Z4G5-456"
+    revision: "TPM 2.0 Firmware 7.85"
+    
+  # Power Supply Unit
+  - class: "000B0001"
+    manufacturer: "Lite-On Technology"
+    model: "PS-4701-1HP"
+    serial: "PSU-Z4G5-456"
+    revision: "700W 80+ Gold"

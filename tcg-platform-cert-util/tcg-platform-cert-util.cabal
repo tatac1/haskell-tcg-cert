@@ -1,0 +1,134 @@
+Name:                tcg-platform-cert-util
+Version:             1.0.0
+Synopsis:            Command-line utility for TCG Platform Certificates
+Description:
+    This package provides a command-line utility for working with TCG (Trusted
+    Computing Group) Platform Certificates and Delta Platform Certificates.
+    .
+    Features include:
+    .
+    * Display certificate details in human-readable format
+    * List platform components and their properties
+    * Validate certificates against issuer certificates
+    * Parse and display ASN.1 structures
+    * OID lookup and display with human-readable names
+    .
+    The utility supports both PEM and DER encoded certificates and follows
+    the IWG Platform Certificate Profile v1.1 specification.
+License:             BSD3
+License-file:        LICENSE
+Copyright:           Toru Tomita <toru.tomita@gmail.com>
+Author:              Toru Tomita <toru.tomita@gmail.com>
+Maintainer:          Toru Tomita <toru.tomita@gmail.com>
+Build-Type:          Simple
+Category:            Security
+Stability:           experimental
+Homepage:            https://github.com/kazu-yamamoto/crypton-certificate
+Cabal-Version:       >= 1.10
+
+Library
+  Default-Language:  Haskell2010
+  hs-source-dirs:    src
+  Buildable:         True
+  Exposed-modules:   Data.X509.TCG.Util.Config
+                   , Data.X509.TCG.Util.ASN1
+                   , Data.X509.TCG.Util.Certificate
+                   , Data.X509.TCG.Util.Display
+                   , Data.X509.TCG.Util.CLI
+                   , Data.X509.TCG.Util.OID
+                   , Data.X509.TCG.Util.Paccor
+                   , Data.X509.TCG.Util.HardwareCollector
+  Build-depends:     base >= 4 && < 5
+                   , aeson
+                   , base64-bytestring
+                   , bytestring
+                   , containers
+                   , directory
+                   , filepath
+                   , time-hourglass
+                   , memory
+                   , pem
+                   , text
+                   , time
+                   , crypton
+                   , crypton-x509 >= 1.7.1
+                   , crypton-x509-store
+                   , crypton-x509-validation
+                   , crypton-asn1-types >= 0.3
+                   , crypton-asn1-encoding
+                   , tcg-platform-cert
+                   , yaml
+                   , platform-hardware-info
+  GHC-Options:       -Wall
+
+Executable           tcg-platform-cert-util
+  Default-Language:  Haskell2010
+  Main-Is:           Main.hs
+  hs-source-dirs:    src
+  Other-modules:     Data.X509.TCG.Util.ASN1
+                   , Data.X509.TCG.Util.CLI
+                   , Data.X509.TCG.Util.Certificate
+                   , Data.X509.TCG.Util.Config
+                   , Data.X509.TCG.Util.Display
+                   , Data.X509.TCG.Util.OID
+                   , Data.X509.TCG.Util.Paccor
+                   , Data.X509.TCG.Util.HardwareCollector
+  Buildable:         True
+  Build-depends:     base >= 4 && < 5
+                   , aeson
+                   , base64-bytestring
+                   , bytestring
+                   , containers
+                   , directory
+                   , filepath
+                   , time-hourglass
+                   , memory
+                   , pem
+                   , text
+                   , time
+                   , crypton
+                   , crypton-x509 >= 1.7.1
+                   , crypton-x509-store
+                   , crypton-x509-validation
+                   , crypton-asn1-types >= 0.3
+                   , crypton-asn1-encoding
+                   , tcg-platform-cert
+                   , yaml
+                   , platform-hardware-info
+  GHC-Options:       -Wall
+
+Test-Suite           test-tcg-platform-cert-util
+  Default-Language:  Haskell2010
+  Type:              exitcode-stdio-1.0
+  Main-Is:           Tests.hs
+  hs-source-dirs:    test
+  Buildable:         True
+  Build-depends:     base >= 4 && < 5
+                   , bytestring
+                   , directory
+                   , filepath
+                   , time-hourglass
+                   , pem
+                   , text
+                   , time
+                   , crypton
+                   , crypton-x509 >= 1.7.1
+                   , crypton-x509-store >= 1.6.7
+                   , crypton-asn1-types >= 0.3
+                   , crypton-asn1-encoding
+                   , tcg-platform-cert
+                   , tcg-platform-cert-util
+                   , yaml
+                   , tasty
+                   , tasty-hunit
+                   , tasty-quickcheck
+                   , QuickCheck
+                   , quickcheck-instances
+                   , temporary
+                   , sbv >= 8.0
+  GHC-Options:       -Wall
+
+source-repository head
+  type:     git
+  location: https://github.com/kazu-yamamoto/crypton-certificate
+  subdir:   tcg-platform-cert-util

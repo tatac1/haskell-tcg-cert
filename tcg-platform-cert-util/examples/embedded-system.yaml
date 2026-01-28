@@ -1,0 +1,142 @@
+# Embedded System Platform Configuration
+# Based on IWG Platform Certificate Profile v1.1 and TCG Component Class Registry v1.0
+
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "STMicroelectronics"
+model: "STM32MP157F Discovery Kit"
+version: "2.1.0"
+serial: "STM32-DK-MP157F-2024-789"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 2555  # 7 years for embedded system lifecycle
+keySize: 2048       # Standard security for embedded
+
+# === Extended Platform Information (OPTIONAL) ===
+platformConfigUri: "https://st.com/platform-config/stm32mp157f/pcr-values"
+platformClass: "00000005"        # Embedded System Platform Class
+specificationVersion: "1.1"      # IWG Platform Certificate Profile v1.1
+majorVersion: 2                  # Platform major version
+minorVersion: 1                  # Platform minor version  
+patchVersion: 0                  # Platform patch version
+platformQualifier: "Embedded"    # Embedded system platform
+
+# === Platform Components (OPTIONAL) ===
+components:
+  # Embedded System Board
+  - class: "00030004"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157F-DK2 Board"
+    serial: "MB-STM32DK-789"
+    revision: "Rev Y"
+    
+  # ARM Cortex-A7 + Cortex-M4 Dual Core
+  - class: "00010003"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157F MPU"
+    serial: "MPU-STM32DK-789"
+    revision: "Dual Cortex-A7@800MHz + Cortex-M4@209MHz"
+    
+  # DDR3L System Memory
+  - class: "00060003"
+    manufacturer: "Micron Technology"
+    model: "MT41K256M16TW-107"
+    serial: "MEM-STM32DK-789"
+    revision: "512MB DDR3L-1066"
+    
+  # eMMC Flash Storage
+  - class: "00070006"
+    manufacturer: "Kingston Technology"
+    model: "EMMC04G-M627"
+    serial: "EMMC-STM32DK-789"
+    revision: "4GB eMMC 5.1"
+    
+  # MicroSD Card Slot
+  - class: "00070004"
+    manufacturer: "STMicroelectronics"
+    model: "SD Card Interface"
+    serial: "SDIF-STM32DK-789"
+    revision: "SDIO 4-bit Interface"
+    
+  # Ethernet PHY
+  - class: "00080001"
+    manufacturer: "Microchip Technology"
+    model: "LAN8742A Ethernet PHY"
+    serial: "ETH-STM32DK-789"
+    revision: "10/100 Ethernet Transceiver"
+    
+  # WiFi/Bluetooth Module
+  - class: "00080002"
+    manufacturer: "Murata Manufacturing"
+    model: "1DX WiFi/BT Module"
+    serial: "WIFI-STM32DK-789"
+    revision: "802.11bgn + Bluetooth 4.1"
+    
+  # USB OTG Controller
+  - class: "00090002"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157 USB OTG"
+    serial: "USB-STM32DK-789"
+    revision: "USB 2.0 OTG HS/FS"
+    
+  # LCD Display Controller
+  - class: "000D0002"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157 LTDC"
+    serial: "LCD-STM32DK-789"
+    revision: "24-bit RGB LCD Controller"
+    
+  # Touch Screen Controller
+  - class: "000D0003"
+    manufacturer: "Goodix Technology"
+    model: "GT911 Touch Controller"
+    serial: "TOUCH-STM32DK-789"
+    revision: "5-point Capacitive Touch"
+    
+  # Audio Codec
+  - class: "000E0001"
+    manufacturer: "Wolfson Microelectronics"
+    model: "WM8994 Audio Codec"
+    serial: "AUDIO-STM32DK-789"
+    revision: "Stereo Audio CODEC"
+    
+  # Camera Interface
+  - class: "000D0001"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157 DCMI"
+    serial: "CAM-STM32DK-789"
+    revision: "Digital Camera Interface"
+    
+  # Power Management IC
+  - class: "000B0002"
+    manufacturer: "STMicroelectronics"
+    model: "STPMIC1A Power IC"
+    serial: "PMIC-STM32DK-789"
+    revision: "Programmable Power Management"
+    
+  # Real-Time Clock
+  - class: "00110001"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157 RTC"
+    serial: "RTC-STM32DK-789"
+    revision: "Built-in RTC with VBAT"
+    
+  # Secure Element
+  - class: "00040008"
+    manufacturer: "STMicroelectronics"
+    model: "STSAFE-A100 Secure Element"
+    serial: "SEC-STM32DK-789"
+    revision: "EAL5+ Certified"
+    
+  # System Boot ROM
+  - class: "00130001"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157 BootROM"
+    serial: "BOOT-STM32DK-789"
+    revision: "Internal Boot ROM"
+    
+  # External Flash Memory
+  - class: "00070005"
+    manufacturer: "Winbond Electronics"
+    model: "W25Q128JV NOR Flash"
+    serial: "FLASH-STM32DK-789"
+    revision: "16MB QSPI NOR Flash"

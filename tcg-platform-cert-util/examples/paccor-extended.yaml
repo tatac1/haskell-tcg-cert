@@ -1,0 +1,45 @@
+components:
+- addresses:
+  - bluetoothMac: null
+    ethernetMac: AF:3A:94:10:A5
+    wlanMac: null
+  - bluetoothMac: null
+    ethernetMac: null
+    wlanMac: AF:37:10:D2:A8
+  class: 0000000A
+  manufacturer: ABC OEM
+  model: WR06X7871FTL
+  revision: '312E31'
+  serial: 41353535352D393939
+- addresses:
+  - bluetoothMac: null
+    ethernetMac: 82:89:FA:D3:61
+    wlanMac: null
+  - bluetoothMac: null
+    ethernetMac: null
+    wlanMac: D4:83:B4:F2:78
+  class: 0000002F
+  manufacturer: XYZ OEM
+  model: LMBT3904DW1T1G
+  revision: '332E31'
+  serial: 43353535352D353535
+credentialSpecMajor: null
+credentialSpecMinor: null
+credentialSpecRevision: null
+keySize: null
+majorVersion: null
+manufacturer: Intel
+minorVersion: null
+model: S2600KP
+patchVersion: null
+platformClass: null
+platformConfigUri: null
+platformQualifier: null
+platformSpecMajor: null
+platformSpecMinor: null
+platformSpecRevision: null
+securityAssertions: null
+serial: BQKP99940643
+specificationVersion: '1.1'
+validityDays: null
+version: H76962-350

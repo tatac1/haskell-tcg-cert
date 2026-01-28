@@ -1,0 +1,98 @@
+# Embedded System Delta Platform Configuration
+# Based on IWG Platform Certificate Profile v1.1 - Delta Certificate Extension
+# This delta certificate tracks changes from the base embedded-system.yaml
+
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "STMicroelectronics"
+model: "STM32MP157F Discovery Kit"
+version: "2.1.1"  # Version update from 2.1.0
+serial: "STM32-DK-MP157F-2024-789"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 365   # Shorter validity for delta certificate
+keySize: 2048       # Maintain security level
+
+# === Delta-Specific Configuration ===
+# Base certificate reference (conceptual - implementation pending)
+baseCertificateSerial: "STM32-DK-MP157F-2024-789"
+deltaSequenceNumber: 1
+changeDescription: "Firmware update and peripheral expansion"
+
+# === Updated Platform Components ===
+# Only components that have changed from the base certificate
+components:
+  # Updated eMMC Flash Storage - Capacity upgrade
+  - class: "00070006"
+    manufacturer: "Kingston Technology"
+    model: "EMMC08G-M627"  # Upgraded capacity
+    serial: "EMMC-STM32DK-789"
+    revision: "8GB eMMC 5.1"  # Upgraded from 4GB
+    
+  # Updated Boot ROM - Security patch
+  - class: "00130001"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157 BootROM"
+    serial: "BOOT-STM32DK-789"
+    revision: "Internal Boot ROM Rev 1.2"  # Updated revision
+    
+  # New CAN-FD Controller - Enhanced CAN capability
+  - class: "00100004"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157 FDCAN"
+    serial: "CANFD-STM32DK-789"  # New component
+    revision: "CAN-FD Controller"
+    
+  # New Crypto Accelerator - Hardware crypto
+  - class: "00040007"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157 CRYP"
+    serial: "CRYPTO-STM32DK-789"  # New component
+    revision: "Hardware Crypto Processor"
+    
+  # Updated Secure Element - Enhanced security
+  - class: "00040008"
+    manufacturer: "STMicroelectronics"
+    model: "STSAFE-A110 Secure Element"  # Upgraded from A100
+    serial: "SEC-STM32DK-789"
+    revision: "EAL5+ Certified Enhanced"  # Enhanced version
+    
+  # New Expansion Board - I/O expansion
+  - class: "00030004"
+    manufacturer: "STMicroelectronics"
+    model: "STM32MP157F Expansion Board"
+    serial: "EXP-STM32DK-789"  # New component
+    revision: "GPIO/ADC/PWM Expansion"
+    
+  # New Sensor Hub - Motion sensing
+  - class: "000F0003"
+    manufacturer: "STMicroelectronics"
+    model: "LSM6DSO IMU Sensor"
+    serial: "IMU-STM32DK-789"  # New component
+    revision: "6-axis Motion Sensor"
+    
+  # Updated External Flash - Capacity upgrade
+  - class: "00070005"
+    manufacturer: "Winbond Electronics"
+    model: "W25Q256JV NOR Flash"  # Upgraded capacity
+    serial: "FLASH-STM32DK-789"
+    revision: "32MB QSPI NOR Flash"  # Upgraded from 16MB
+    
+  # New Ethernet PHY - Network connectivity
+  - class: "00080001"
+    manufacturer: "Microchip Technology"
+    model: "LAN8742A-CZ Ethernet PHY"
+    serial: "ETH-STM32DK-789-02"  # New component
+    revision: "10/100 Ethernet Transceiver Rev B"
+
+# === Change Summary ===
+# Changes from base certificate:
+# 1. eMMC storage upgrade: 4GB → 8GB capacity
+# 2. Boot ROM security update: Rev 1.0 → Rev 1.2
+# 3. Added CAN-FD controller for enhanced automotive communication
+# 4. Added hardware crypto accelerator for security operations
+# 5. Secure element upgrade: STSAFE-A100 → STSAFE-A110 (enhanced)
+# 6. Added expansion board for additional I/O capabilities
+# 7. Added motion sensor: LSM6DSO 6-axis IMU
+# 8. External flash upgrade: 16MB → 32MB capacity
+# 9. Added second Ethernet PHY for redundant connectivity
+# 10. Platform version update: 2.1.0 → 2.1.1

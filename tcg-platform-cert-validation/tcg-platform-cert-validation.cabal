@@ -1,0 +1,96 @@
+cabal-version: 1.18
+
+name:          tcg-platform-cert-validation
+version:       0.1.0.0
+license:       BSD3
+license-file:  LICENSE
+copyright:     Toru Tomita <toru.tomita@gmail.com>
+maintainer:    Toru Tomita <toru.tomita@gmail.com>
+author:        Toru Tomita <toru.tomita@gmail.com>
+synopsis:      Validation functions for TCG Platform Certificates
+description:
+    This library provides validation functions for TCG (Trusted Computing Group) 
+    Platform Certificates and Delta Platform Certificates as defined in the 
+    IWG Platform Certificate Profile v1.1.
+    .
+    This is a separate validation package following the design pattern of
+    crypton-x509-validation, providing comprehensive validation functionality
+    for Platform Certificate chains including:
+    .
+    * Digital signature verification
+    * Certificate chain consistency validation
+    * TCG specification compliance checking
+    * Component hierarchy validation
+    * Attribute validation and compliance
+    * Caching mechanisms for validation results
+
+category:      Cryptography, Data, System
+build-type:    Simple
+stability:     experimental
+
+source-repository head
+  type: git
+  location: https://github.com/toru-tomita/tcg-platform-cert
+
+library
+  default-language: Haskell2010
+  ghc-options: -Wall
+
+  build-depends:
+      base >= 4.9 && < 5
+    , bytestring
+    , crypton-asn1-types >= 0.2.0
+    , crypton-asn1-encoding
+    , crypton-asn1-parse
+    , crypton
+    , crypton-x509 >= 1.7.6
+    , crypton-x509-validation
+    , tcg-platform-cert
+    , time-hourglass
+    , memory
+    , containers
+    , mtl
+    , data-default
+    , time
+
+  exposed-modules:
+      Data.X509.TCG.Validation
+    , Data.X509.TCG.Validation.Types
+    , Data.X509.TCG.Validation.Cache
+    , Data.X509.TCG.Validation.Internal
+
+  hs-source-dirs: src
+
+test-suite test-tcg-platform-cert-validation
+  type: exitcode-stdio-1.0
+  main-is: Tests.hs
+  hs-source-dirs: tests
+  default-language: Haskell2010
+  ghc-options: -Wall -threaded
+  
+  other-modules:
+      Tests.Validation
+    , Tests.Cache
+    , Tests.Internal
+    , Tests.Properties
+    , Tests.Arbitrary
+    , Tests.SBV
+
+  build-depends:
+      tcg-platform-cert-validation
+    , tcg-platform-cert
+    , base
+    , bytestring
+    , crypton-asn1-types
+    , crypton-asn1-encoding
+    , crypton-x509
+    , crypton-x509-validation
+    , crypton
+    , tasty
+    , tasty-quickcheck
+    , tasty-hunit
+    , QuickCheck
+    , quickcheck-instances
+    , time-hourglass
+    , time
+    , sbv >= 8.0

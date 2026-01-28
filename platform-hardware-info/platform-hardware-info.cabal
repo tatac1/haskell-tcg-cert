@@ -1,0 +1,110 @@
+Name:                platform-hardware-info
+Version:             0.1.0
+Synopsis:            Cross-platform hardware information collection
+Description:
+    This package provides cross-platform hardware information collection
+    for use with TCG Platform Certificates and other hardware attestation
+    workflows.
+    .
+    Supported platforms:
+    .
+    * Linux (via sysfs and /sys/firmware/dmi/tables/)
+    * Windows (via Win32 API: GetSystemFirmwareTable, etc.)
+    * macOS (via system_profiler and sysctl)
+    .
+    Collected information:
+    .
+    * System/Platform information (manufacturer, model, serial, UUID)
+    * CPU information
+    * Memory devices
+    * Network interfaces (MAC addresses)
+    * Storage devices
+    * Baseboard/Chassis information
+    * TPM information
+
+License:             BSD3
+License-file:        LICENSE
+Copyright:           Toru Tomita <toru.tomita@gmail.com>
+Author:              Toru Tomita <toru.tomita@gmail.com>
+Maintainer:          Toru Tomita <toru.tomita@gmail.com>
+Build-Type:          Simple
+Category:            System, Hardware
+Stability:           experimental
+Homepage:            https://github.com/kazu-yamamoto/crypton-certificate
+Cabal-Version:       >= 1.10
+
+Library
+  Default-Language:  Haskell2010
+  hs-source-dirs:    src
+
+  Exposed-modules:
+    Data.HardwareInfo
+    Data.HardwareInfo.Types
+    Data.HardwareInfo.Class
+    Data.HardwareInfo.Smbios.Parser
+    Data.HardwareInfo.Smbios.Types
+
+  Build-depends:
+    base >= 4.9 && < 5
+    , bytestring
+    , text
+    , containers
+    , network-info >= 0.2
+    , directory
+    , filepath
+
+  -- Linux specific
+  if os(linux)
+    Exposed-modules:
+      Data.HardwareInfo.Linux
+      Data.HardwareInfo.Linux.Sysfs
+      Data.HardwareInfo.Linux.Nvme
+      Data.HardwareInfo.Linux.Pci
+      Data.HardwareInfo.Linux.Block
+    Build-depends:
+      unix >= 2.7
+      , process
+      , aeson >= 2.0
+    cpp-options: -DLINUX
+
+  -- Windows specific
+  if os(windows)
+    Exposed-modules:
+      Data.HardwareInfo.Windows
+      Data.HardwareInfo.Windows.Smbios
+      Data.HardwareInfo.Windows.Nvme
+      Data.HardwareInfo.Windows.SetupApi
+    Build-depends:
+      Win32 >= 2.6
+    Extra-libraries:
+      setupapi
+    cpp-options: -DWINDOWS
+
+  -- macOS specific
+  if os(osx)
+    Exposed-modules:
+      Data.HardwareInfo.Darwin
+    Build-depends:
+      process
+
+  GHC-Options:       -Wall
+
+Test-Suite test-platform-hardware-info
+  Default-Language:  Haskell2010
+  Type:              exitcode-stdio-1.0
+  Main-Is:           Tests.hs
+  hs-source-dirs:    test
+  Build-depends:
+    base >= 4.9 && < 5
+    , bytestring
+    , text
+    , platform-hardware-info
+    , tasty
+    , tasty-hunit
+    , tasty-quickcheck
+  GHC-Options:       -Wall
+
+source-repository head
+  type:     git
+  location: https://github.com/kazu-yamamoto/crypton-certificate
+  subdir:   platform-hardware-info

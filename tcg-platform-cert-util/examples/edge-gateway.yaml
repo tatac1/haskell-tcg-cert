@@ -1,0 +1,128 @@
+# Edge Gateway Platform Configuration
+# Based on IWG Platform Certificate Profile v1.1 and TCG Component Class Registry v1.0
+
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "Advantech Co., Ltd."
+model: "ARK-3531L Edge Gateway"
+version: "1.0.8"
+serial: "EDGE-ADV-ARK3531-2024-123"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 1826  # 5 years for industrial edge deployment
+keySize: 2048       # Standard security for edge computing
+
+# === Extended Platform Information (OPTIONAL) ===
+platformConfigUri: "https://advantech.com/platform-config/ark3531l/pcr-values"
+platformClass: "00000004"        # Edge Gateway Platform Class
+specificationVersion: "1.1"      # IWG Platform Certificate Profile v1.1
+majorVersion: 1                  # Platform major version
+minorVersion: 0                  # Platform minor version  
+patchVersion: 8                  # Platform patch version
+platformQualifier: "Industrial"  # Industrial-grade edge platform
+
+# === Platform Components (OPTIONAL) ===
+components:
+  # Industrial Grade Motherboard
+  - class: "00030003"
+    manufacturer: "Advantech Co., Ltd."
+    model: "ARK-3531L Main Board"
+    serial: "MB-ARK3531-123"
+    revision: "Rev B1.0"
+    
+  # ARM Cortex-A72 Processor
+  - class: "00010003"
+    manufacturer: "NXP Semiconductors"
+    model: "i.MX 8M Plus Cortex-A53"
+    serial: "CPU-ARK3531-123"
+    revision: "Quad-core 1.8GHz"
+    
+  # Industrial Grade Memory
+  - class: "00060004"
+    manufacturer: "Micron Technology"
+    model: "MT53E512M32D2DT-046"
+    serial: "MEM-ARK3531-123"
+    revision: "4GB LPDDR4X-4266"
+    
+  # eMMC Storage
+  - class: "00070006"
+    manufacturer: "SanDisk Corporation"
+    model: "SDINBDA4-32G"
+    serial: "EMMC-ARK3531-123"
+    revision: "32GB eMMC 5.1"
+    
+  # Industrial Ethernet Port 1
+  - class: "00080001"
+    manufacturer: "Realtek Semiconductor"
+    model: "RTL8111H Ethernet"
+    serial: "ETH1-ARK3531-123"
+    revision: "Gigabit Ethernet"
+    
+  # Industrial Ethernet Port 2
+  - class: "00080001"
+    manufacturer: "Realtek Semiconductor"
+    model: "RTL8111H Ethernet"
+    serial: "ETH2-ARK3531-123"
+    revision: "Gigabit Ethernet"
+    
+  # Cellular Modem - 5G
+  - class: "00080004"
+    manufacturer: "Quectel Wireless Solutions"
+    model: "RM502Q-AE 5G Module"
+    serial: "5G-ARK3531-123"
+    revision: "5G NR Sub-6GHz"
+    
+  # WiFi/Bluetooth Module
+  - class: "00080002"
+    manufacturer: "Intel Corporation"
+    model: "AX200 WiFi 6"
+    serial: "WIFI-ARK3531-123"
+    revision: "802.11ax + Bluetooth 5.2"
+    
+  # Industrial USB Hub
+  - class: "00090001"
+    manufacturer: "Genesys Logic Inc."
+    model: "GL3523 USB Hub"
+    serial: "USB-ARK3531-123"
+    revision: "USB 3.2 Gen1 Hub"
+    
+  # Serial Communication Interface
+  - class: "00100001"
+    manufacturer: "FTDI Ltd."
+    model: "FT4232H Quad UART"
+    serial: "UART-ARK3531-123"
+    revision: "4-Port RS-232/422/485"
+    
+  # CAN Bus Interface
+  - class: "00100002"
+    manufacturer: "NXP Semiconductors"
+    model: "TJA1050 CAN Transceiver"
+    serial: "CAN-ARK3531-123"
+    revision: "CAN 2.0B Interface"
+    
+  # Industrial Power Management
+  - class: "000B0002"
+    manufacturer: "Texas Instruments"
+    model: "TPS65218D0 PMIC"
+    serial: "PMIC-ARK3531-123"
+    revision: "Wide Input Range"
+    
+  # Boot Firmware
+  - class: "00130004"
+    manufacturer: "Advantech Co., Ltd."
+    model: "ARK-3531L U-Boot"
+    serial: "BOOT-ARK3531-123"
+    revision: "U-Boot 2022.04"
+    
+  # Temperature Sensor
+  - class: "000F0001"
+    manufacturer: "Texas Instruments"
+    model: "TMP102 Temp Sensor"
+    serial: "TEMP-ARK3531-123"
+    revision: "±0.5°C Accuracy"
+    
+  # Real-Time Clock
+  - class: "00110001"
+    manufacturer: "NXP Semiconductors"
+    model: "PCF8523 RTC"
+    serial: "RTC-ARK3531-123"
+    revision: "Battery Backup RTC"

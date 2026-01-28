@@ -1,0 +1,73 @@
+# Workstation Delta Platform Configuration
+# Based on IWG Platform Certificate Profile v1.1 - Delta Certificate Extension
+# This delta certificate tracks changes from the base workstation.yaml
+
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "Hewlett-Packard Enterprise"
+model: "Z4 G5 Workstation"
+version: "3.2.2"  # Version update from 3.2.1
+serial: "WS-HPE-Z4G5-2024-456"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 365   # Shorter validity for delta certificate
+keySize: 2048       # Maintain security level
+
+# === Delta-Specific Configuration ===
+# Base certificate reference (conceptual - implementation pending)
+baseCertificateSerial: "WS-HPE-Z4G5-2024-456"
+deltaSequenceNumber: 1
+changeDescription: "Graphics card upgrade and storage expansion"
+
+# === Updated Platform Components ===
+# Only components that have changed from the base certificate
+components:
+  # Upgraded Graphics Card - Component replacement
+  - class: "00020002"
+    manufacturer: "NVIDIA Corporation"
+    model: "RTX A6000"  # Upgraded from RTX A4000
+    serial: "GPU-Z4G5-456-NEW"  # New serial for new card
+    revision: "48GB GDDR6"  # Upgraded from 16GB
+    
+  # Additional NVMe Storage - New component
+  - class: "00070003"
+    manufacturer: "Samsung Electronics"
+    model: "980 PRO NVMe SSD"
+    serial: "SSD-Z4G5-456-02"  # New component
+    revision: "4TB NVMe PCIe 4.0"
+    
+  # Updated UEFI BIOS - Firmware update
+  - class: "00130003"
+    manufacturer: "Hewlett-Packard Enterprise"
+    model: "Z4 G5 UEFI BIOS"
+    serial: "BIOS-Z4G5-456"
+    revision: "P42 Ver. 02.28"  # Updated from 02.26
+    
+  # Additional WiFi Module - New component for better connectivity
+  - class: "00080002"
+    manufacturer: "Intel Corporation"
+    model: "AX210 WiFi 6E"
+    serial: "WIFI-Z4G5-456-02"  # New component
+    revision: "802.11ax WiFi 6E + Bluetooth 5.3"
+    
+  # Additional Memory Module - Memory expansion
+  - class: "00060004"
+    manufacturer: "SK Hynix Inc."
+    model: "HMA84GR7CJR4N-XN"
+    serial: "MEM-Z4G5-456-03"  # New component
+    revision: "32GB DDR4-3200 ECC"
+    
+  # Additional Memory Module - Memory expansion
+  - class: "00060004"
+    manufacturer: "SK Hynix Inc."
+    model: "HMA84GR7CJR4N-XN"
+    serial: "MEM-Z4G5-456-04"  # New component
+    revision: "32GB DDR4-3200 ECC"
+
+# === Change Summary ===
+# Changes from base certificate:
+# 1. Graphics card upgrade: RTX A4000 16GB → RTX A6000 48GB
+# 2. Storage expansion: Added 4TB NVMe SSD (total: 6TB NVMe + 4TB HDD)
+# 3. Memory expansion: 64GB → 128GB ECC (added 2x32GB modules)
+# 4. UEFI BIOS update: P42 Ver. 02.26 → P42 Ver. 02.28
+# 5. WiFi upgrade: AX201 WiFi 6 → AX210 WiFi 6E
+# 6. Platform version update: 3.2.1 → 3.2.2

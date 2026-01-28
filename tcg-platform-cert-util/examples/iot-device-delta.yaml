@@ -1,0 +1,74 @@
+# IoT Device Delta Platform Configuration
+# Based on IWG Platform Certificate Profile v1.1 - Delta Certificate Extension
+# This delta certificate tracks changes from the base iot-device.yaml
+
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "Raspberry Pi Foundation"
+model: "Raspberry Pi 4 Model B"
+version: "1.5.1"  # Version update from 1.5
+serial: "RPI4B-IOT-2024-7890"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 365   # Shorter validity for delta certificate
+keySize: 2048       # Maintain security level
+
+# === Delta-Specific Configuration ===
+# Base certificate reference (conceptual - implementation pending)
+baseCertificateSerial: "RPI4B-IOT-2024-7890"
+deltaSequenceNumber: 1
+changeDescription: "Firmware update and storage upgrade"
+
+# === Updated Platform Components ===
+# Only components that have changed from the base certificate
+components:
+  # Updated MicroSD Storage - Storage upgrade
+  - class: "00070004"
+    manufacturer: "SanDisk Corporation"
+    model: "Ultra microSDXC"
+    serial: "SD-RPI4B-7890"
+    revision: "256GB Class 10 A2"  # Upgraded from 128GB
+    
+  # Updated Boot Firmware - Firmware update
+  - class: "00130004"
+    manufacturer: "Raspberry Pi Foundation"
+    model: "Pi 4 Boot Firmware"
+    serial: "BOOT-RPI4B-7890"
+    revision: "2024.01.15"  # Updated from 2023.12.06
+    
+  # New USB-attached Storage - Additional storage
+  - class: "00070003"
+    manufacturer: "Samsung Electronics"
+    model: "T7 Portable SSD"
+    serial: "USB-SSD-RPI4B-7890"  # New component
+    revision: "1TB USB 3.2 Gen2"
+    
+  # Updated Wireless Module - Connectivity improvement
+  - class: "00080002"
+    manufacturer: "Cypress Semiconductor"
+    model: "CYW43455 WiFi/Bluetooth"
+    serial: "WIFI-RPI4B-7890"
+    revision: "802.11ac Dual Band Rev 1.3"  # Updated revision
+    
+  # New PoE HAT - Power over Ethernet capability
+  - class: "000B0003"
+    manufacturer: "Raspberry Pi Foundation"
+    model: "PoE+ HAT"
+    serial: "POE-RPI4B-7890"  # New component
+    revision: "25W Power over Ethernet"
+    
+  # New Sensor Module - Environmental monitoring
+  - class: "000F0002"
+    manufacturer: "Bosch Sensortec"
+    model: "BME680 Environmental Sensor"
+    serial: "SENSOR-RPI4B-7890"  # New component
+    revision: "Gas, Humidity, Pressure, Temperature"
+
+# === Change Summary ===
+# Changes from base certificate:
+# 1. Storage upgrade: 128GB → 256GB microSD card
+# 2. Boot firmware update: 2023.12.06 → 2024.01.15
+# 3. Added external USB SSD: 1TB Samsung T7 Portable
+# 4. WiFi module revision update for better performance
+# 5. Added PoE+ HAT for Power over Ethernet capability
+# 6. Added environmental sensor module for IoT monitoring
+# 7. Platform version update: 1.5 → 1.5.1

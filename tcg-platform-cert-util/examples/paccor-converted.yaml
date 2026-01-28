@@ -1,0 +1,48 @@
+components:
+- addresses: null
+  class: '00000001'
+  manufacturer: Dell Inc.
+  model: Desktop
+  revision: Not Specified
+  serial: 306VRD2
+- addresses: null
+  class: '00000020'
+  manufacturer: Dell Inc.
+  model: 0Y7WYT
+  revision: A00
+  serial: /306VRD2/CN7016368902MW/
+- addresses: null
+  class: '00000300'
+  manufacturer: Intel(R) Corporation
+  model: Core i7
+  revision: Intel(R) Core(TM) i7-6700 CPU @ 3.40GHz
+  serial: Not Specified
+- addresses:
+  - bluetoothMac: null
+    ethernetMac: null
+    wlanMac: a4:34:d9:2e:cb:56
+  class: '00090002'
+  manufacturer: Intel Corporation
+  model: Wireless 8260
+  revision: 3a
+  serial: a4:34:d9:2e:cb:56
+credentialSpecMajor: null
+credentialSpecMinor: null
+credentialSpecRevision: null
+keySize: null
+majorVersion: null
+manufacturer: Dell Inc.
+minorVersion: null
+model: OptiPlex 7040
+patchVersion: null
+platformClass: null
+platformConfigUri: null
+platformQualifier: null
+platformSpecMajor: null
+platformSpecMinor: null
+platformSpecRevision: null
+securityAssertions: null
+serial: 306VRD2
+specificationVersion: '1.1'
+validityDays: null
+version: '1.0'

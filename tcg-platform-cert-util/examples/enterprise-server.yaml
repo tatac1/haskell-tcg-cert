@@ -1,0 +1,107 @@
+# Enterprise Server Platform Configuration
+# Based on IWG Platform Certificate Profile v1.1 and TCG Component Class Registry v1.0
+
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "Dell Technologies Inc."
+model: "PowerEdge R750"
+version: "2.1.3"
+serial: "PE750-ENT-2024-001"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 1095  # 3 years for enterprise deployment
+keySize: 3072       # Enhanced security for enterprise
+
+# === Extended Platform Information (OPTIONAL) ===
+platformConfigUri: "https://dell.com/platform-config/poweredge-r750/pcr-values"
+platformClass: "00000001"        # Enterprise Server Platform Class
+specificationVersion: "1.1"      # IWG Platform Certificate Profile v1.1
+majorVersion: 2                  # Platform major version
+minorVersion: 1                  # Platform minor version  
+patchVersion: 3                  # Platform patch version
+platformQualifier: "Enterprise"  # Enterprise-grade platform
+
+# === Platform Components (OPTIONAL) ===
+components:
+  # Main System Board/Motherboard
+  - class: "00030003"
+    manufacturer: "Dell Technologies Inc."
+    model: "PowerEdge R750 Motherboard"
+    serial: "MB-PE750-001"
+    revision: "A02"
+    
+  # Primary CPU - Intel Xeon
+  - class: "00010002"
+    manufacturer: "Intel Corporation"
+    model: "Xeon Gold 6348"
+    serial: "CPU-PE750-001"
+    revision: "Stepping 6"
+    
+  # Secondary CPU - Intel Xeon
+  - class: "00010002"
+    manufacturer: "Intel Corporation"
+    model: "Xeon Gold 6348"
+    serial: "CPU-PE750-002"
+    revision: "Stepping 6"
+    
+  # System Memory - DDR4
+  - class: "00060004"
+    manufacturer: "Samsung Electronics"
+    model: "M393A4K40DB3-CWE"
+    serial: "MEM-PE750-001"
+    revision: "32GB DDR4-3200"
+    
+  # System Memory - DDR4
+  - class: "00060004"
+    manufacturer: "Samsung Electronics"
+    model: "M393A4K40DB3-CWE"
+    serial: "MEM-PE750-002"
+    revision: "32GB DDR4-3200"
+    
+  # Primary Storage - NVMe SSD
+  - class: "00070003"
+    manufacturer: "Samsung Electronics"
+    model: "PM9A3 NVMe SSD"
+    serial: "SSD-PE750-001"
+    revision: "1.92TB"
+    
+  # Secondary Storage - NVMe SSD
+  - class: "00070003"
+    manufacturer: "Samsung Electronics"
+    model: "PM9A3 NVMe SSD"
+    serial: "SSD-PE750-002"
+    revision: "1.92TB"
+    
+  # Network Interface Card - Ethernet
+  - class: "00080001"
+    manufacturer: "Broadcom Inc."
+    model: "NetXtreme BCM57414"
+    serial: "NIC-PE750-001"
+    revision: "25GbE Dual Port"
+    
+  # System Firmware - UEFI BIOS
+  - class: "00130003"
+    manufacturer: "Dell Technologies Inc."
+    model: "PowerEdge UEFI BIOS"
+    serial: "BIOS-PE750-001"
+    revision: "2.15.2"
+    
+  # TPM - Trusted Platform Module
+  - class: "00040009"
+    manufacturer: "Nuvoton Technology Corp."
+    model: "NPCT750"
+    serial: "TPM-PE750-001"
+    revision: "TPM 2.0"
+    
+  # Power Supply Unit
+  - class: "000B0001"
+    manufacturer: "Delta Electronics Inc."
+    model: "DPS-750AB-6"
+    serial: "PSU-PE750-001"
+    revision: "750W 80+ Platinum"
+    
+  # Cooling Fan Assembly
+  - class: "000C0001"
+    manufacturer: "Delta Electronics Inc."
+    model: "System Cooling Fan"
+    serial: "FAN-PE750-001"
+    revision: "PWM 4-pin"

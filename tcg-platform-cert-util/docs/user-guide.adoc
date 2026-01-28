@@ -1,0 +1,1586 @@
+= TCG Platform Certificate Utility User Guide
+:toc: left
+:toclevels: 4
+:icons: font
+:sectanchors:
+:source-highlighter: highlight.js
+:author: Toru Tomita
+:revdate: 2024-12-01
+:revnumber: 1.0
+
+== Introduction
+
+tcg-platform-cert-util is a Haskell-based command-line utility for generating, validating, and inspecting TCG Platform Certificates according to the TCG Platform Certificate Profile v1.1 specification.
+
+=== What is a Platform Certificate?
+
+A Platform Certificate is an X.509 attribute certificate defined by the Trusted Computing Group (TCG). It encapsulates:
+
+* **Device component details** - Serial numbers, manufacturers, models for each hardware component
+* **Platform compliance to standards** - Such as FIPS-140 Level 2, Common Criteria certifications
+* **Endorsement Key (EK) references** - Binding the certificate to a specific TPM
+* **Manufacturer signature** - Providing accountability and integrity
+
+The Platform Certificate enables Supply Chain Risk Management (SCRM) by allowing verification that hardware components have not been changed from factory to deployment.
+
+=== Key Concepts
+
+Platform Certificate (Base)::
+The original certificate created at the factory by the platform manufacturer, reflecting the initial state of the device.
+
+Delta Platform Certificate::
+A certificate that documents changes made to the platform after the original base certificate was created (e.g., memory upgrades, firmware updates).
+
+TPM (Trusted Platform Module)::
+A cryptoprocessor that provides the root of trust for platform attestation.
+
+EK (Endorsement Key) Certificate::
+An X.509 certificate that contains the public portion of the TPM's Endorsement Key, used to bind the Platform Certificate to a specific TPM.
+
+== Installation
+
+=== Prerequisites
+
+* GHC (Glasgow Haskell Compiler) 9.0 or later
+* Stack build tool
+* OpenSSL (for key and certificate generation)
+
+=== Building from Source
+
+[source,bash]
+----
+cd tcg-platform-cert-util
+stack build
+----
+
+=== Running the Utility
+
+[source,bash]
+----
+stack exec tcg-platform-cert-util -- <command> [options]
+----
+
+== Commands
+
+The utility provides the following commands:
+
+[cols="2,5", options="header"]
+|===
+| Command | Description
+| `generate` | Generate a new Platform Certificate
+| `generate-delta` | Generate a Delta Platform Certificate
+| `show` | Display certificate information
+| `validate` | Validate a certificate
+| `components` | Extract component information from a certificate
+| `create-config` | Create an example YAML configuration file
+| `help` | Show usage information
+|===
+
+Use `tcg-platform-cert-util <command> --help` for command-specific options.
+
+== Platform Certificate Generation
+
+The `generate` command creates a new base Platform Certificate.
+
+=== Required Files
+
+Before generating a Platform Certificate, you need:
+
+1. **CA Private Key** (`--ca-key`) - PEM-formatted private key for signing
+2. **CA Certificate** (`--ca-cert`) - PEM-formatted certificate corresponding to the private key
+3. **TPM EK Certificate** (`--ek-cert`) - PEM-formatted TPM Endorsement Key certificate
+
+=== Basic Usage
+
+[source,bash]
+----
+tcg-platform-cert-util generate \
+  --manufacturer "My Corporation" \
+  --model "My Platform Model" \
+  --version "1.0" \
+  --serial "SERIAL001" \
+  --ca-key ca-key.pem \
+  --ca-cert ca-cert.pem \
+  --ek-cert ek-cert.pem \
+  --output platform-cert.pem
+----
+
+=== Using YAML Configuration
+
+For complex configurations with multiple components and extended attributes, use a YAML configuration file:
+
+[source,bash]
+----
+tcg-platform-cert-util generate \
+  --config platform-config.yaml \
+  --ca-key ca-key.pem \
+  --ca-cert ca-cert.pem \
+  --ek-cert ek-cert.pem \
+  --output platform-cert.pem
+----
+
+=== Command Options for `generate`
+
+[cols="2,1,4", options="header"]
+|===
+| Option | Required | Description
+| `-o, --output` | No | Output file (default: platform-cert.pem)
+| `-m, --manufacturer` | Yes* | Platform manufacturer name
+| `--model` | Yes* | Platform model name
+| `--version` | Yes* | Platform version
+| `-s, --serial` | Yes* | Platform serial number
+| `--key-size` | No | Key size in bits (default: 2048)
+| `--validity` | No | Validity period in days (default: 365)
+| `-k, --ca-key` | Yes | CA private key file (PEM format)
+| `-c, --ca-cert` | Yes | CA certificate file (PEM format)
+| `-e, --ek-cert` | Yes | TPM EK certificate file (PEM format)
+| `-f, --config` | No | YAML configuration file (alternative to individual options)
+| `--hash` | No | Hash algorithm: sha256, sha384, sha512 (default: sha384)
+|===
+
+*Required when not using a configuration file.
+
+=== Hash Algorithm Selection
+
+The utility supports multiple hash algorithms for certificate signing:
+
+* `sha256` - SHA-256 (legacy support)
+* `sha384` - SHA-384 (default, CNSA 2.0 compliant)
+* `sha512` - SHA-512 (highest security)
+
+[source,bash]
+----
+tcg-platform-cert-util generate \
+  --config platform-config.yaml \
+  --ca-key ca-key.pem \
+  --ca-cert ca-cert.pem \
+  --ek-cert ek-cert.pem \
+  --hash sha384 \
+  --output platform-cert.pem
+----
+
+== Delta Platform Certificate Generation
+
+Delta Platform Certificates document changes made to a platform after the base certificate was issued.
+
+=== Use Cases
+
+* **Memory upgrades** - Adding or replacing RAM modules
+* **Firmware updates** - UEFI/BIOS updates
+* **Component replacements** - Swapping hard drives, network cards
+* **Hardware expansions** - Adding graphics cards, storage controllers
+
+=== Basic Usage
+
+[source,bash]
+----
+tcg-platform-cert-util generate-delta \
+  --base-cert base-platform-cert.pem \
+  --ca-key ca-key.pem \
+  --ca-cert ca-cert.pem \
+  --output delta-cert.pem
+----
+
+=== Using YAML Configuration for Delta Certificates
+
+[source,bash]
+----
+tcg-platform-cert-util generate-delta \
+  --base-cert base-platform-cert.pem \
+  --config delta-config.yaml \
+  --ca-key ca-key.pem \
+  --ca-cert ca-cert.pem \
+  --output delta-cert.pem
+----
+
+=== Command Options for `generate-delta`
+
+[cols="2,1,4", options="header"]
+|===
+| Option | Required | Description
+| `-o, --output` | No | Output file (default: delta-cert.pem)
+| `-b, --base-cert` | Yes | Base platform certificate file (PEM format)
+| `--base-serial` | No | Base certificate serial number
+| `--component-changes` | No | Component changes description
+| `-k, --ca-key` | Yes | CA private key file (PEM format)
+| `-c, --ca-cert` | Yes | CA certificate file (PEM format)
+| `--hash` | No | Hash algorithm: sha256, sha384, sha512 (default: sha384)
+|===
+
+== YAML Configuration Reference
+
+=== Platform Certificate Configuration
+
+The YAML configuration file provides a comprehensive way to specify all platform certificate attributes.
+
+==== Basic Structure
+
+[source,yaml]
+----
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "Company Name"
+model: "Platform Model"
+version: "1.0.0"
+serial: "SERIAL-12345"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 365
+keySize: 2048
+
+# === Extended Platform Information (OPTIONAL) ===
+platformConfigUri: "https://example.com/platform-config"
+platformClass: "00000001"
+specificationVersion: "1.1"
+majorVersion: 1
+minorVersion: 0
+patchVersion: 0
+platformQualifier: "Enterprise"
+
+# === TCG Credential Specification (OPTIONAL) ===
+credentialSpecMajor: 1
+credentialSpecMinor: 1
+credentialSpecRevision: 13
+
+# === Platform Specification (OPTIONAL) ===
+platformSpecMajor: 2
+platformSpecMinor: 0
+platformSpecRevision: 164
+
+# === Security Assertions (OPTIONAL) ===
+securityAssertions:
+  # ... (see Security Assertions section)
+
+# === Platform Components (OPTIONAL) ===
+components:
+  # ... (see Components section)
+----
+
+==== Basic Platform Information
+
+These fields identify the platform and are required when using a configuration file:
+
+[cols="2,1,4", options="header"]
+|===
+| Field | Type | Description
+| `manufacturer` | String | Platform manufacturer name
+| `model` | String | Platform model designation
+| `version` | String | Platform version identifier
+| `serial` | String | Platform serial number (must be unique)
+|===
+
+==== Certificate Properties
+
+[cols="2,1,1,4", options="header"]
+|===
+| Field | Type | Default | Description
+| `validityDays` | Integer | 365 | Certificate validity period in days
+| `keySize` | Integer | 2048 | RSA key size in bits (2048, 3072, 4096)
+|===
+
+==== Extended Platform Information
+
+[cols="3,1,4", options="header"]
+|===
+| Field | Type | Description
+| `platformConfigUri` | String | URI pointing to platform configuration details (e.g., PCR values)
+| `platformClass` | String | Hex-encoded platform class from TCG Registry (e.g., "00000001")
+| `specificationVersion` | String | IWG Platform Certificate Profile version (e.g., "1.1")
+| `majorVersion` | Integer | Platform major version number
+| `minorVersion` | Integer | Platform minor version number
+| `patchVersion` | Integer | Platform patch version number
+| `platformQualifier` | String | Platform qualifier description (e.g., "Enterprise", "Consumer")
+|===
+
+==== Platform Class Values
+
+The `platformClass` field uses hex-encoded values from the TCG Registry:
+
+[cols="1,3", options="header"]
+|===
+| Value | Platform Type
+| 00000001 | Enterprise Server
+| 00000002 | Workstation
+| 00000003 | Desktop PC
+| 00000004 | Notebook/Laptop
+| 00000005 | Tablet
+| 00000006 | Mobile Device
+| 00000007 | IoT Device
+| 00000008 | Embedded System
+|===
+
+==== TCG Credential Specification Version
+
+Per IWG Platform Certificate Profile v1.1:
+
+[cols="2,1,4", options="header"]
+|===
+| Field | Type | Description
+| `credentialSpecMajor` | Integer | TCG Credential Specification major version
+| `credentialSpecMinor` | Integer | TCG Credential Specification minor version
+| `credentialSpecRevision` | Integer | TCG Credential Specification revision
+|===
+
+==== Platform Specification Version
+
+[cols="2,1,4", options="header"]
+|===
+| Field | Type | Description
+| `platformSpecMajor` | Integer | Platform specification major version
+| `platformSpecMinor` | Integer | Platform specification minor version
+| `platformSpecRevision` | Integer | Platform specification revision
+|===
+
+=== Component Configuration
+
+Components represent hardware elements of the platform. Each component is identified by its class and manufacturer/model information according to the **TCG Component Class Registry Version 1.0 Revision 14** <<ref-tcg-component-registry>>.
+
+==== Component Structure
+
+[source,yaml]
+----
+components:
+  - class: "00090002"                    # Component class (hex)
+    manufacturer: "Intel Corporation"
+    model: "Ethernet Controller X710"
+    serial: "NIC-X710-2024-001"
+    revision: "10GbE Quad Port"
+    addresses:
+      - ethernetMac: "3C:FD:FE:AB:12:34"   # Primary port MAC
+      - ethernetMac: "3C:FD:FE:AB:12:35"   # Secondary port MAC
+----
+
+==== Component Fields
+
+[cols="2,1,1,4", options="header"]
+|===
+| Field | Type | Required | Description
+| `class` | String | Yes | Hex-encoded component class from TCG Registry (4-byte OCTET STRING)
+| `manufacturer` | String | Yes | Component manufacturer name (UTF8String, max 255 chars)
+| `model` | String | Yes | Component model designation (UTF8String, max 255 chars)
+| `serial` | String | No | Component serial number (UTF8String, max 255 chars)
+| `revision` | String | No | Component revision/version (UTF8String, max 255 chars)
+| `addresses` | List | No | Network addresses associated with component (see <<component-addresses>>)
+|===
+
+[[component-addresses]]
+==== Component Addresses
+
+Network components require associated address information for proper identification and validation. The `addresses` field supports the following address types:
+
+[cols="2,3,3", options="header"]
+|===
+| Address Type | Format | Example
+| `ethernetMac` | IEEE 802 MAC Address (48-bit) | `3C:FD:FE:AB:12:34`
+| `wlanMac` | IEEE 802.11 Wireless MAC Address | `00:1A:2B:3C:4D:5E`
+| `bluetoothMac` | Bluetooth Device Address (BD_ADDR) | `00:11:22:33:44:55`
+|===
+
+IMPORTANT: Network adapters (Ethernet, Wi-Fi, Bluetooth) SHOULD include their hardware addresses for proper supply chain validation.
+
+==== TCG Component Class Registry (Version 1.0 Revision 14)
+
+The `class` field uses values from the **TCG Component Class Registry** <<ref-tcg-component-registry>>. The componentClassValue is encoded as a 4-byte OCTET STRING where:
+
+* **Upper 2 bytes**: Component category
+* **Lower 2 bytes**: Component sub-category
+
+===== Uncategorized Components (0x0000xxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00000000 | General Component | A class is known but the type is not further described
+|===
+
+===== Microprocessor Components (0x0001xxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00010000 | General Processor | A processor whose type is not further described
+| 0x00010002 | CPU | Central Processing Unit
+| 0x00010004 | DSP Processor | Digital Signal Processing unit
+| 0x00010005 | Video Processor | Video signal processing unit
+| 0x00010006 | GPU | Graphics Processing Unit for graphics, compute, and AI
+| 0x00010007 | DPU | Data Processing Unit for data-centric computation
+| 0x00010008 | Embedded processor | Processor used as an embedded controller
+| 0x00010009 | SoC | System-on-a-Chip composed of multiple components
+|===
+
+===== Container Components (0x0002xxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00020000 | General Container | A container whose type is not further described
+| 0x00020002 | Desktop | Desktop computer chassis
+| 0x00020008 | Laptop | Clamshell personal computer form factor
+| 0x00020009 | Notebook | Analogous to laptop form factor
+| 0x0002000C | All in One | Monitor with integrated computer
+| 0x00020010 | Main Server Chassis | Chassis for rack mounted servers
+| 0x00020012 | Sub Chassis | Chassis contained within another chassis
+| 0x00020015 | RAID Chassis | Enclosure for hard disk drives
+| 0x00020016 | Rack Mount Chassis | Enclosure for server hardware units
+| 0x00020018 | Multi-system chassis | Chassis hosting multiple computer systems
+| 0x0002001B | Blade | Chassis housing modular server blades
+| 0x0002001C | Blade Enclosure | Container housing multiple blade servers
+| 0x0002001D | Tablet | Single, thin, flat, mobile computing device
+| 0x0002001E | Convertible | Device that can be either laptop or tablet
+| 0x00020020 | IoT | Internet-of-Things device container
+| 0x00020023 | Stick PC | USB thumb drive-sized computing device
+|===
+
+===== IC Board Components (0x0003xxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00030000 | General IC Board | An IC board whose type is not further described
+| 0x00030002 | Daughter board | Board that extends the circuitry of another board
+| 0x00030003 | Motherboard | Board containing principal components (processor, memory, I/O)
+| 0x00030004 | Riser Card | Board that plugs into system board providing additional slots
+|===
+
+===== Module Components (0x0004xxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00040000 | General Module | A module whose type is not further described
+| 0x00040009 | TPM | Discrete Trusted Platform Module
+|===
+
+===== Controller Components (0x0005xxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00050000 | General Controller | A controller whose type is not further described
+| 0x00050002 | Video Controller | Manages output image generation
+| 0x00050003 | SCSI Controller | Manages SCSI communications
+| 0x00050004 | Ethernet Controller | Manages Ethernet communications
+| 0x00050006 | Audio/Sound Controller | Manages sound output
+| 0x00050008 | SATA Controller | Serial ATA controller
+| 0x00050009 | SAS Controller | Serial Attached SCSI controller
+| 0x0005000B | RAID Controller | Controller of hard disk drives
+| 0x0005000D | USB Controller | Universal Serial Bus port controller
+| 0x0005000E | Multi-function Storage Controller | SATA, SAS, NVMe, RAID combination
+| 0x0005000F | Multi-function Network Controller | Ethernet, Infiniband combination
+| 0x00050010 | Smart IO Controller | Networking and storage on same card
+| 0x00050012 | BMC | Baseboard Management Controller
+| 0x00050013 | DMA Controller | Direct Memory Access controller
+|===
+
+===== Memory Components (0x0006xxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00060000 | General Memory | A memory whose type is not further described
+| 0x00060004 | DRAM Memory | Dynamic Random-Access Memory
+| 0x0006000A | FLASH Memory | Solid state non-volatile memory
+| 0x00060010 | SDRAM Memory | Synchronous DRAM
+| 0x0006001B | NVRAM Memory | Non-Volatile RAM
+| 0x0006001C | 3D Xpoint Memory | Stackable data access arrays technology
+| 0x0006001D | DDR5 Memory | Double Data Rate RAM (successor to DDR4)
+| 0x0006001E | LPDDR5 Memory | Low Power DDR memory (successor to LPDDR4)
+|===
+
+===== Storage Components (0x0007xxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00070000 | General Storage Device | A storage device whose type is not further described
+| 0x00070002 | Storage Drive | Component with data storage as main functionality
+| 0x00070003 | SSD Drive | Solid-State Drive
+| 0x00070004 | M.2 Drive | M.2 form factor SSD
+| 0x00070005 | HDD Drive | Hard Disk Drive
+| 0x00070006 | NVMe | NVMe subsystem
+|===
+
+===== Media Drive Components (0x0008xxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00080000 | General Media Drive | A media drive whose type is not further described
+| 0x00080003 | Tape Drive | Data storage device based on magnetic tapes
+| 0x00080006 | DVD Drive | Digital Versatile Disk drive
+| 0x00080007 | BR Drive | Blu-Ray drive
+|===
+
+===== Network Adapter Components (0x0009xxxx)
+
+IMPORTANT: Network adapters SHOULD include MAC addresses in the `addresses` field.
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00090000 | General Network Adapter | A network adapter whose type is not further described
+| 0x00090002 | Ethernet Adapter | Ethernet LAN adapter - include `ethernetMac`
+| 0x00090003 | Wi-Fi Adapter | Wi-Fi network adapter - include `wlanMac`
+| 0x00090004 | Bluetooth Adapter | Bluetooth adapter - include `bluetoothMac`
+| 0x00090006 | ZigBee Adapter | ZigBee adapter
+| 0x00090007 | 3G Cellular Adapter | 3G cellular network adapter
+| 0x00090008 | 4G Cellular Adapter | 4G cellular network adapter
+| 0x00090009 | 5G Cellular Adapter | 5G cellular network adapter
+| 0x0009000A | Network Switch | Packet switching network adapter
+| 0x0009000B | Network Router | Traffic directing network adapter
+|===
+
+===== Energy Object Components (0x000Axxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x000A0000 | General Energy Object | An energy object whose type is not further described
+| 0x000A0002 | Power Supply | Power supplying component
+| 0x000A0003 | Battery | Battery component
+|===
+
+===== Cooling Components (0x000Dxxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x000D0000 | General Cooling Device | A cooling device whose type is not further described
+| 0x000D0004 | Chassis Fan | Cooling fan attached to device chassis
+| 0x000D0005 | Socket Fan | CPU fan
+|===
+
+===== Input Components (0x000Exxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x000E0000 | General Input Device | An input device whose type is not further described
+|===
+
+===== Firmware Components (0x0013xxxx)
+
+[cols="1,2,4", options="header"]
+|===
+| Class Value | Mnemonic | Definition
+| 0x00130000 | General Firmware | Firmware whose type is not further described
+| 0x00130003 | System firmware | Platform firmware (UEFI/BIOS)
+| 0x00130004 | Drive firmware | Storage device firmware
+| 0x00130005 | Bootloader | Software that starts the boot process
+| 0x00130006 | SMM | System Management Module software stack
+| 0x00130007 | NIC firmware | Network Interface Card firmware
+|===
+
+==== Example: Complete Component List with Addresses
+
+[source,yaml]
+----
+components:
+  # Motherboard (IC Board)
+  - class: "00030003"
+    manufacturer: "Dell Technologies Inc."
+    model: "PowerEdge R760 System Board"
+    serial: "CN-0HPXJK-28736-3B2-0042"
+    revision: "A03"
+
+  # CPU (Microprocessor)
+  - class: "00010002"
+    manufacturer: "Intel Corporation"
+    model: "Xeon Gold 6430"
+    serial: "ATPO94728361"
+    revision: "Stepping B0"
+
+  # GPU (Microprocessor)
+  - class: "00010006"
+    manufacturer: "NVIDIA Corporation"
+    model: "A100 PCIe 80GB"
+    serial: "1324823019847"
+    revision: "A100-PCIE-80GB"
+
+  # DDR5 Memory
+  - class: "0006001D"
+    manufacturer: "SK hynix Inc."
+    model: "HMCG94MEBRA123N"
+    serial: "2347AB8C91D2F001"
+    revision: "64GB DDR5-4800 ECC RDIMM"
+
+  # NVMe Storage
+  - class: "00070006"
+    manufacturer: "Samsung Electronics Co., Ltd."
+    model: "PM1733a"
+    serial: "S5XXNA0T123456"
+    revision: "3.84TB U.2 NVMe PCIe 4.0"
+
+  # Ethernet Adapter (with MAC addresses)
+  - class: "00090002"
+    manufacturer: "Broadcom Inc."
+    model: "BCM57508 NetXtreme-E"
+    serial: "P2010384A"
+    revision: "100GbE QSFP56 Dual Port"
+    addresses:
+      - ethernetMac: "F4:03:43:A1:B2:C3"
+      - ethernetMac: "F4:03:43:A1:B2:C4"
+
+  # Wi-Fi Adapter (with MAC address)
+  - class: "00090003"
+    manufacturer: "Intel Corporation"
+    model: "Wi-Fi 6E AX211"
+    serial: "INL2024WF001234"
+    revision: "802.11ax 2x2 160MHz"
+    addresses:
+      - wlanMac: "48:51:B7:D8:E9:FA"
+
+  # Bluetooth Adapter (with Bluetooth address)
+  - class: "00090004"
+    manufacturer: "Intel Corporation"
+    model: "AX211 Bluetooth"
+    serial: "INL2024BT001234"
+    revision: "Bluetooth 5.3"
+    addresses:
+      - bluetoothMac: "48:51:B7:D8:E9:FB"
+
+  # TPM (Module)
+  - class: "00040009"
+    manufacturer: "Infineon Technologies AG"
+    model: "SLB9670VQ2.0"
+    serial: "IFX0729384756"
+    revision: "TPM 2.0 Firmware 7.85.4555.0"
+
+  # BMC (Controller)
+  - class: "00050012"
+    manufacturer: "Dell Technologies Inc."
+    model: "iDRAC9 Enterprise"
+    serial: "BMC-CN7892134"
+    revision: "6.10.00.00"
+    addresses:
+      - ethernetMac: "D0:94:66:12:34:56"
+
+  # System Firmware (UEFI)
+  - class: "00130003"
+    manufacturer: "Dell Technologies Inc."
+    model: "PowerEdge R760 BIOS"
+    serial: "BIOS-R760-2024"
+    revision: "1.6.7"
+
+  # Power Supply
+  - class: "000A0002"
+    manufacturer: "Delta Electronics Inc."
+    model: "DPS-1600CB A"
+    serial: "DLT2024PS001234"
+    revision: "1600W 80+ Titanium"
+
+  # Chassis Fan
+  - class: "000D0004"
+    manufacturer: "Delta Electronics Inc."
+    model: "PFC1212DE"
+    serial: "FAN-DELTA-001"
+    revision: "120mm 12V PWM"
+----
+
+=== Security Assertions Configuration
+
+Security assertions document the security standards and certifications met by the platform.
+
+==== Security Assertions Structure
+
+[source,yaml]
+----
+securityAssertions:
+  version: 0
+
+  # Common Criteria Information
+  cCVersion: "3.1"
+  evalAssuranceLevel: 4         # EAL1-7
+  evalStatus: "evaluationCompleted"
+  plus: false
+  strengthOfFunction: "medium"  # basic, medium, high
+  protectionProfileOID: "..."
+  protectionProfileURI: "..."
+  securityTargetOID: "..."
+  securityTargetURI: "..."
+
+  # FIPS Information
+  fIPSVersion: "140-2"
+  fIPSSecurityLevel: 2          # 1-4
+  fIPSPlus: false
+
+  # Root of Trust Measurement Type
+  rTMType: "hybrid"             # static, dynamic, nonHosted, hybrid
+
+  # ISO 9000 Certification
+  iSO9000Certified: false
+  iSO9000URI: "..."
+----
+
+==== Security Assertions Fields
+
+[cols="3,1,4", options="header"]
+|===
+| Field | Type | Description
+| `version` | Integer | Security assertions version (default: 0)
+| `cCVersion` | String | Common Criteria version (e.g., "3.1")
+| `evalAssuranceLevel` | Integer | Evaluation Assurance Level (1-7)
+| `evalStatus` | String | Evaluation status
+| `plus` | Boolean | CC Plus indicator
+| `strengthOfFunction` | String | Strength of function rating
+| `protectionProfileOID` | String | Protection Profile OID
+| `protectionProfileURI` | String | Protection Profile URI
+| `securityTargetOID` | String | Security Target OID
+| `securityTargetURI` | String | Security Target URI
+| `fIPSVersion` | String | FIPS version (e.g., "140-2", "140-3")
+| `fIPSSecurityLevel` | Integer | FIPS Security Level (1-4)
+| `fIPSPlus` | Boolean | FIPS Plus indicator
+| `rTMType` | String | Root of Trust Measurement type
+| `iSO9000Certified` | Boolean | ISO 9000 certification status
+| `iSO9000URI` | String | ISO 9000 certificate URI
+|===
+
+==== Evaluation Status Values
+
+[cols="1,3", options="header"]
+|===
+| Value | Description
+| evaluationInProgress | Evaluation is currently ongoing
+| evaluationCompleted | Evaluation has been completed
+| evaluationWithdrawn | Evaluation was withdrawn
+|===
+
+==== Strength of Function Values
+
+[cols="1,3", options="header"]
+|===
+| Value | Description
+| basic | Basic strength
+| medium | Medium strength
+| high | High strength
+|===
+
+==== RTM Type Values
+
+[cols="1,3", options="header"]
+|===
+| Value | Description
+| static | Static Root of Trust for Measurement
+| dynamic | Dynamic Root of Trust for Measurement
+| nonHosted | Non-hosted environment
+| hybrid | Combination of static and dynamic
+|===
+
+==== Example: Full Security Assertions
+
+[source,yaml]
+----
+securityAssertions:
+  version: 0
+
+  # Common Criteria: EAL4+ certified
+  cCVersion: "3.1"
+  evalAssuranceLevel: 4
+  evalStatus: "evaluationCompleted"
+  plus: true
+  strengthOfFunction: "high"
+  protectionProfileURI: "https://www.commoncriteriaportal.org/pps/"
+
+  # FIPS 140-2 Level 2 certified
+  fIPSVersion: "140-2"
+  fIPSSecurityLevel: 2
+  fIPSPlus: false
+
+  # Hybrid root of trust
+  rTMType: "hybrid"
+
+  # ISO 9000 certified
+  iSO9000Certified: true
+  iSO9000URI: "https://example.com/iso9000-cert"
+----
+
+=== Delta Certificate Configuration
+
+Delta certificates have additional fields specific to tracking changes from a base certificate.
+
+==== Delta-Specific Fields
+
+[source,yaml]
+----
+# === Delta-Specific Configuration ===
+baseCertificateSerial: "ORIGINAL-SERIAL-001"
+deltaSequenceNumber: 1
+changeDescription: "Firmware update and memory expansion"
+----
+
+[cols="2,1,4", options="header"]
+|===
+| Field | Type | Description
+| `baseCertificateSerial` | String | Serial number of the base certificate
+| `deltaSequenceNumber` | Integer | Sequence number of this delta (1 for first delta)
+| `changeDescription` | String | Human-readable description of changes
+|===
+
+==== Example: Delta Configuration
+
+[source,yaml]
+----
+# Delta Platform Configuration for Memory Upgrade
+manufacturer: "Dell Technologies Inc."
+model: "PowerEdge R750"
+version: "2.1.4"
+serial: "PE750-ENT-2024-001"
+
+validityDays: 365
+keySize: 3072
+
+# Delta-specific fields
+baseCertificateSerial: "PE750-ENT-2024-001"
+deltaSequenceNumber: 1
+changeDescription: "Memory upgrade from 64GB to 128GB"
+
+# Only include changed/new components
+components:
+  # New Memory Module 1
+  - class: "00060004"
+    manufacturer: "Samsung Electronics"
+    model: "M393A4K40DB3-CWE"
+    serial: "MEM-PE750-003"
+    revision: "32GB DDR4-3200"
+
+  # New Memory Module 2
+  - class: "00060004"
+    manufacturer: "Samsung Electronics"
+    model: "M393A4K40DB3-CWE"
+    serial: "MEM-PE750-004"
+    revision: "32GB DDR4-3200"
+----
+
+== Certificate Viewing and Validation
+
+=== Viewing Certificate Information
+
+The `show` command displays detailed information about a Platform Certificate:
+
+[source,bash]
+----
+tcg-platform-cert-util show platform-cert.pem
+----
+
+Output includes:
+* Certificate version and serial number
+* Validity period
+* Issuer information
+* Platform information (manufacturer, model, version, serial)
+* Component list with details
+* Signature algorithm and value
+
+Use verbose mode for additional details:
+
+[source,bash]
+----
+tcg-platform-cert-util show --verbose platform-cert.pem
+----
+
+=== Validating Certificates
+
+The `validate` command performs comprehensive validation:
+
+[source,bash]
+----
+tcg-platform-cert-util validate platform-cert.pem
+----
+
+For signature verification against a CA certificate:
+
+[source,bash]
+----
+tcg-platform-cert-util validate \
+  --ca-cert ca-cert.pem \
+  platform-cert.pem
+----
+
+==== Validation Checks
+
+The validator performs these checks:
+
+1. **Structure Check** - Certificate parses correctly as X.509 attribute certificate
+2. **Validity Period** - Certificate is currently valid (not expired, not before start)
+3. **Required Attributes** - All mandatory TCG attributes are present
+4. **Signature Check** - Cryptographic signature verification (when CA cert provided)
+5. **Platform Information** - Required platform fields are present and valid
+
+=== Extracting Component Information
+
+The `components` command extracts and displays component information:
+
+[source,bash]
+----
+tcg-platform-cert-util components platform-cert.pem
+----
+
+Use verbose mode for detailed component data:
+
+[source,bash]
+----
+tcg-platform-cert-util components --verbose platform-cert.pem
+----
+
+== Creating Example Configuration
+
+Generate an example YAML configuration file:
+
+[source,bash]
+----
+tcg-platform-cert-util create-config example-config.yaml
+----
+
+This creates a fully-commented example configuration that can be used as a template.
+
+== Complete Examples
+
+=== Example 1: Enterprise Server Platform Certificate
+
+.enterprise-server.yaml
+[source,yaml]
+----
+# Enterprise Server Platform Configuration
+manufacturer: "Dell Technologies Inc."
+model: "PowerEdge R750"
+version: "2.1.3"
+serial: "PE750-ENT-2024-001"
+
+validityDays: 1095    # 3 years
+keySize: 3072         # CNSA 2.0 compliant
+
+platformConfigUri: "https://dell.com/platform-config/r750"
+platformClass: "00000001"    # Enterprise Server
+specificationVersion: "1.1"
+majorVersion: 2
+minorVersion: 1
+patchVersion: 3
+platformQualifier: "Enterprise"
+
+credentialSpecMajor: 1
+credentialSpecMinor: 1
+credentialSpecRevision: 22
+
+components:
+  # Motherboard
+  - class: "00030003"
+    manufacturer: "Dell Technologies Inc."
+    model: "PowerEdge R750 Motherboard"
+    serial: "MB-PE750-ENT-001-A02"
+    revision: "A02"
+
+  # Intel Xeon CPU
+  - class: "00010002"
+    manufacturer: "Intel Corporation"
+    model: "Xeon Gold 6348"
+    serial: "ATPN72914582"
+    revision: "Stepping 6"
+
+  # DDR4 ECC Memory
+  - class: "00060004"
+    manufacturer: "Samsung Electronics Co."
+    model: "M393A4K40DB3-CWE"
+    serial: "SEC8K2103A7"
+    revision: "32GB DDR4-3200 RDIMM ECC"
+
+  # Ethernet Network Adapter with MAC address
+  - class: "00090001"
+    manufacturer: "Broadcom Inc."
+    model: "NetXtreme BCM57414"
+    serial: "NIC-PE750-ENT-001"
+    revision: "25GbE Dual Port"
+    ethernetMac: "78:E7:D1:A3:5C:20"
+
+  # TPM Security Module
+  - class: "00040009"
+    manufacturer: "Nuvoton Technology Corp."
+    model: "NPCT750"
+    serial: "TPM-PE750-ENT-001"
+    revision: "TPM 2.0 Firmware 7.2.1"
+
+  # UEFI BIOS Firmware
+  - class: "00130003"
+    manufacturer: "Dell Technologies Inc."
+    model: "PowerEdge R750 UEFI BIOS"
+    serial: "BIOS-PE750-ENT-001"
+    revision: "2.15.2"
+----
+
+Generation command:
+
+[source,bash]
+----
+tcg-platform-cert-util generate \
+  --config enterprise-server.yaml \
+  --ca-key ca-key.pem \
+  --ca-cert ca-cert.pem \
+  --ek-cert ek-cert.pem \
+  --hash sha384 \
+  --output enterprise-server-platform-cert.pem
+----
+
+=== Example 2: IoT Gateway with Security Assertions
+
+.iot-gateway.yaml
+[source,yaml]
+----
+# IoT Gateway Platform Configuration
+manufacturer: "Sierra Wireless Inc."
+model: "XR80 Industrial IoT Gateway"
+version: "3.2.1"
+serial: "SWXR80-2024-10847"
+
+validityDays: 730     # 2 years
+keySize: 2048
+
+platformClass: "00000007"    # IoT Device
+specificationVersion: "1.1"
+majorVersion: 3
+minorVersion: 2
+patchVersion: 1
+
+securityAssertions:
+  version: 0
+  fIPSVersion: "140-2"
+  fIPSSecurityLevel: 2
+  rTMType: "static"
+  iSO9000Certified: true
+
+components:
+  # System Board
+  - class: "00030003"
+    manufacturer: "Sierra Wireless Inc."
+    model: "XR80 System Board"
+    serial: "MB-XR80-10847"
+    revision: "Rev B2"
+
+  # ARM Processor
+  - class: "00010004"
+    manufacturer: "Qualcomm Technologies Inc."
+    model: "QCS6490"
+    serial: "QCOM-QCS6490-8274"
+    revision: "Octa-Core 2.7GHz"
+
+  # DDR4 Memory
+  - class: "00060004"
+    manufacturer: "Micron Technology"
+    model: "MT53E512M32D2NP"
+    serial: "MTA4G29104"
+    revision: "4GB LPDDR4X"
+
+  # eMMC Storage
+  - class: "00070005"
+    manufacturer: "Samsung Electronics Co."
+    model: "KLMBG4JETD-B041"
+    serial: "EMMC-XR80-10847"
+    revision: "32GB eMMC 5.1"
+
+  # LTE Modem with Cellular Module
+  - class: "00090006"
+    manufacturer: "Sierra Wireless Inc."
+    model: "EM9191 5G Module"
+    serial: "EM9191-XR80-10847"
+    revision: "5G Sub-6 Cat 20"
+
+  # Wi-Fi + Bluetooth Combo
+  - class: "00090004"
+    manufacturer: "Qualcomm Technologies Inc."
+    model: "QCA6391"
+    serial: "WLAN-XR80-10847"
+    revision: "Wi-Fi 6 + Bluetooth 5.1"
+    wlanMac: "3C:7A:8A:E2:15:C8"
+    bluetoothMac: "3C:7A:8A:E2:15:C9"
+
+  # Ethernet Interface
+  - class: "00090001"
+    manufacturer: "Realtek Semiconductor"
+    model: "RTL8211F"
+    serial: "ETH-XR80-10847"
+    revision: "Gigabit Ethernet PHY"
+    ethernetMac: "3C:7A:8A:E2:15:D0"
+
+  # Secure Element (TPM-like)
+  - class: "00040009"
+    manufacturer: "Microchip Technology Inc."
+    model: "ATECC608B"
+    serial: "SE-XR80-10847"
+    revision: "Trust&GO Secure Element"
+
+  # Firmware
+  - class: "00130002"
+    manufacturer: "Sierra Wireless Inc."
+    model: "XR80 Firmware"
+    serial: "FW-XR80-10847"
+    revision: "3.2.1 Build 4527"
+----
+
+=== Example 3: Delta Certificate for Firmware Update
+
+Delta 証明書はベース証明書からの変更を追跡します。変更されたコンポーネントのみを含めます。
+
+.firmware-update-delta.yaml
+[source,yaml]
+----
+# Delta Certificate for Firmware Update
+# Changes: BIOS update + Memory expansion + NIC driver update
+manufacturer: "Dell Technologies Inc."
+model: "PowerEdge R750"
+version: "2.1.4"                          # Version updated from 2.1.3
+serial: "PE750-ENT-2024-001"
+
+validityDays: 365
+keySize: 3072
+
+platformClass: "00000001"
+specificationVersion: "1.1"
+majorVersion: 2
+minorVersion: 1
+patchVersion: 4                           # Patch version updated
+
+# Delta-specific fields
+baseCertificateSerial: "PE750-ENT-2024-001"
+deltaSequenceNumber: 1
+changeDescription: "Security update: BIOS 2.15.2→2.17.0, Memory expansion 64GB→128GB"
+
+components:
+  # Updated UEFI BIOS Firmware
+  - class: "00130003"
+    manufacturer: "Dell Technologies Inc."
+    model: "PowerEdge R750 UEFI BIOS"
+    serial: "BIOS-PE750-ENT-001"
+    revision: "2.17.0"                    # Updated from 2.15.2
+
+  # Added Memory Module 1
+  - class: "00060004"
+    manufacturer: "Samsung Electronics Co."
+    model: "M393A4K40DB3-CWE"
+    serial: "SEC8K2103A8"                 # New serial
+    revision: "32GB DDR4-3200 RDIMM ECC"
+
+  # Added Memory Module 2
+  - class: "00060004"
+    manufacturer: "Samsung Electronics Co."
+    model: "M393A4K40DB3-CWE"
+    serial: "SEC8K2103A9"                 # New serial
+    revision: "32GB DDR4-3200 RDIMM ECC"
+
+  # Updated NIC Firmware (same hardware, firmware update)
+  - class: "00090001"
+    manufacturer: "Broadcom Inc."
+    model: "NetXtreme BCM57414"
+    serial: "NIC-PE750-ENT-001"
+    revision: "25GbE Dual Port Firmware 21.50.4"  # Firmware version added
+    ethernetMac: "78:E7:D1:A3:5C:20"      # MAC unchanged
+----
+
+Generation command:
+
+[source,bash]
+----
+tcg-platform-cert-util generate-delta \
+  --base-cert enterprise-server-platform-cert.pem \
+  --config firmware-update-delta.yaml \
+  --ca-key ca-key.pem \
+  --ca-cert ca-cert.pem \
+  --output firmware-update-delta-cert.pem
+----
+
+== Generating Test Credentials
+
+For testing purposes, you can generate CA credentials and a test EK certificate using OpenSSL.
+
+=== Generate CA Private Key and Certificate
+
+[source,bash]
+----
+# Generate CA private key (RSA 3072-bit for CNSA 2.0 compliance)
+openssl genrsa -out ca-key.pem 3072
+
+# Generate self-signed CA certificate
+openssl req -x509 -new -nodes \
+  -key ca-key.pem \
+  -sha384 \
+  -days 3650 \
+  -out ca-cert.pem \
+  -subj "/C=US/ST=State/L=City/O=Organization/OU=CA/CN=Platform CA"
+----
+
+=== Generate Test EK Certificate
+
+[source,bash]
+----
+# Generate EK private key
+openssl genrsa -out ek-key.pem 2048
+
+# Generate EK CSR
+openssl req -new \
+  -key ek-key.pem \
+  -out ek-csr.pem \
+  -subj "/C=US/ST=State/L=City/O=TPM Manufacturer/OU=TPM/CN=TPM EK"
+
+# Sign EK certificate with CA
+openssl x509 -req \
+  -in ek-csr.pem \
+  -CA ca-cert.pem \
+  -CAkey ca-key.pem \
+  -CAcreateserial \
+  -out ek-cert.pem \
+  -days 3650 \
+  -sha256
+----
+
+== Troubleshooting
+
+=== Common Issues
+
+==== "CA private key, CA certificate, and TPM EK certificate are required"
+
+All three credentials must be provided when generating a certificate. Ensure you have:
+
+* `--ca-key` pointing to a valid PEM private key
+* `--ca-cert` pointing to a valid PEM certificate
+* `--ek-cert` pointing to a valid TPM EK certificate
+
+==== "Error loading config file"
+
+Check your YAML syntax. Common issues include:
+
+* Incorrect indentation (use spaces, not tabs)
+* Missing required fields (manufacturer, model, version, serial)
+* Invalid hex values for component classes
+
+==== Hash Algorithm Warnings
+
+If you see warnings about SHA256, consider upgrading to SHA384 or SHA512 for CNSA 2.0 compliance:
+
+[source,bash]
+----
+--hash sha384
+----
+
+==== Certificate Validation Failures
+
+For signature verification failures:
+
+1. Ensure the CA certificate matches the key used to sign
+2. Check that the certificate has not expired
+3. Verify the certificate was not corrupted during transfer
+
+== References
+
+本ドキュメントおよび tcg-platform-cert-util は以下の仕様書に基づいています。
+
+=== TCG 仕様書
+
+[[ref-tcg-platform-cert]]
+TCG Infrastructure Working Group Platform Certificate Profile::
+  TCG プラットフォーム証明書の構造、属性、および生成要件を定義する主要仕様。 +
+  バージョン: 1.1 Revision 22 (2024年1月) +
+  URL: https://trustedcomputinggroup.org/resource/tcg-infrastructure-working-group-iwg-platform-certificate-profile/
+
+[[ref-tcg-component-registry]]
+TCG Component Class Registry::
+  プラットフォームコンポーネントのクラス識別子を定義。componentClassValue の値は本レジストリに準拠。 +
+  バージョン: Version 1.0 Revision 14 (2023年8月) +
+  URL: https://trustedcomputinggroup.org/resource/tcg-component-class-registry/
+
+[[ref-tcg-ek-credential]]
+TCG EK Credential Profile::
+  TPM Endorsement Key (EK) 証明書の構造と要件を定義。 +
+  バージョン: Version 2.5 Revision 3 (2023年10月) +
+  URL: https://trustedcomputinggroup.org/resource/tcg-ek-credential-profile/
+
+[[ref-tcg-tpm-library]]
+TCG TPM 2.0 Library Specification::
+  TPM 2.0 のコマンド、構造、およびアルゴリズムを定義。 +
+  URL: https://trustedcomputinggroup.org/resource/tpm-library-specification/
+
+=== IETF RFC
+
+[[ref-rfc5755]]
+RFC 5755 - An Internet Attribute Certificate Profile for Authorization::
+  属性証明書の基本構造を定義。プラットフォーム証明書は本 RFC に基づく X.509 属性証明書。 +
+  URL: https://tools.ietf.org/html/rfc5755
+
+[[ref-rfc5912]]
+RFC 5912 - New ASN.1 Modules for the Public Key Infrastructure Using X.509 (PKIX)::
+  X.509 証明書の ASN.1 モジュール定義。 +
+  URL: https://tools.ietf.org/html/rfc5912
+
+=== 暗号アルゴリズム仕様
+
+[[ref-cnsa-2]]
+CNSA 2.0 - Commercial National Security Algorithm Suite::
+  NSA による暗号アルゴリズム推奨。本ツールは SHA-384/SHA-512 および RSA 3072/4096 をサポート。 +
+  URL: https://media.defense.gov/2022/Sep/07/2003071834/-1/-1/0/CSA_CNSA_2.0_ALGORITHMS_.PDF
+
+=== 関連ツール・実装
+
+[[ref-paccor]]
+PACCOR - Platform Attribute Certificate Creator::
+  NSA Cybersecurity によるリファレンス実装。本ツールの設計に参考とした。 +
+  URL: https://github.com/nsacyber/paccor
+
+=== 組織リンク
+
+* https://trustedcomputinggroup.org/[Trusted Computing Group (TCG)] - TCG 仕様策定組織
+
+== Appendix A: Complete YAML Configuration Template
+
+本テンプレートは実在の製品情報に基づく現実的なサンプルです。
+
+[source,yaml]
+----
+# TCG Platform Certificate Configuration Template
+# Based on IWG Platform Certificate Profile v1.1
+# Example: Dell PowerEdge R760 Enterprise Server
+
+# ============================================================
+# BASIC PLATFORM INFORMATION (REQUIRED)
+# ============================================================
+manufacturer: "Dell Technologies Inc."   # Platform manufacturer
+model: "PowerEdge R760"                  # Platform model designation
+version: "2.3.0"                         # Platform version
+serial: "PE760-DC01-2024-1847"           # Unique serial number
+
+# ============================================================
+# CERTIFICATE PROPERTIES (OPTIONAL)
+# ============================================================
+validityDays: 1095                       # 3 years for enterprise deployment
+keySize: 3072                            # CNSA 2.0 compliant (RSA 3072+)
+
+# ============================================================
+# EXTENDED PLATFORM INFORMATION (OPTIONAL)
+# ============================================================
+platformConfigUri: "https://dell.com/support/platform-config/poweredge-r760/v2.3"
+platformClass: "00000001"                # Enterprise Server Platform Class
+specificationVersion: "1.1"              # IWG Platform Certificate Profile v1.1
+majorVersion: 2                          # Platform major version
+minorVersion: 3                          # Platform minor version
+patchVersion: 0                          # Platform patch version
+platformQualifier: "Enterprise"          # Enterprise-grade platform
+
+# ============================================================
+# TCG CREDENTIAL SPECIFICATION (OPTIONAL)
+# ============================================================
+credentialSpecMajor: 1
+credentialSpecMinor: 1
+credentialSpecRevision: 22
+
+# ============================================================
+# PLATFORM SPECIFICATION (OPTIONAL)
+# ============================================================
+platformSpecMajor: 2
+platformSpecMinor: 0
+platformSpecRevision: 164
+
+# ============================================================
+# SECURITY ASSERTIONS (OPTIONAL)
+# ============================================================
+securityAssertions:
+  version: 0
+
+  # Common Criteria (CC)
+  cCVersion: "3.1"
+  evalAssuranceLevel: 4                  # EAL 4
+  evalStatus: "evaluationCompleted"
+  plus: false
+  strengthOfFunction: "high"
+
+  # FIPS 140-3
+  fIPSVersion: "140-3"
+  fIPSSecurityLevel: 2                   # Level 2
+  fIPSPlus: false
+
+  # Root of Trust Measurement Type
+  rTMType: "static"                      # Static RTM (SRTM)
+
+  # ISO 9000 Certification
+  iSO9000Certified: true
+
+# ============================================================
+# PLATFORM COMPONENTS (OPTIONAL)
+# ============================================================
+components:
+  # Motherboard (IC Board - Motherboard)
+  - class: "00030003"
+    manufacturer: "Dell Technologies Inc."
+    model: "PowerEdge R760 Motherboard"
+    serial: "MB-R760-1847-A02"
+    revision: "A02"
+
+  # Primary CPU (Microprocessor - Intel)
+  - class: "00010002"
+    manufacturer: "Intel Corporation"
+    model: "Xeon Gold 6458Q"
+    serial: "ATPO62381475"
+    revision: "Stepping 8"
+
+  # Secondary CPU (Microprocessor - Intel)
+  - class: "00010002"
+    manufacturer: "Intel Corporation"
+    model: "Xeon Gold 6458Q"
+    serial: "ATPO62381476"
+    revision: "Stepping 8"
+
+  # DDR5 ECC Memory Module 1 (Memory - DDR5)
+  - class: "00060005"
+    manufacturer: "SK Hynix Inc."
+    model: "HMCG94MEBRA112N"
+    serial: "HYNX8E41027A"
+    revision: "64GB DDR5-4800 ECC RDIMM"
+
+  # DDR5 ECC Memory Module 2 (Memory - DDR5)
+  - class: "00060005"
+    manufacturer: "SK Hynix Inc."
+    model: "HMCG94MEBRA112N"
+    serial: "HYNX8E41027B"
+    revision: "64GB DDR5-4800 ECC RDIMM"
+
+  # NVMe SSD 1 (Storage - NVMe SSD)
+  - class: "00070003"
+    manufacturer: "Samsung Electronics Co."
+    model: "PM9A3 Enterprise SSD"
+    serial: "S6EWNX0T800214"
+    revision: "3.84TB U.2 NVMe PCIe 4.0"
+
+  # NVMe SSD 2 (Storage - NVMe SSD)
+  - class: "00070003"
+    manufacturer: "Samsung Electronics Co."
+    model: "PM9A3 Enterprise SSD"
+    serial: "S6EWNX0T800215"
+    revision: "3.84TB U.2 NVMe PCIe 4.0"
+
+  # Ethernet NIC (Network Adapter - Ethernet)
+  # 重要: ethernetMac は IEEE EUI-48 形式（6 バイト）
+  - class: "00090001"
+    manufacturer: "Broadcom Inc."
+    model: "NetXtreme BCM57416"
+    serial: "NIC-R760-1847-ETH1"
+    revision: "25GbE Dual Port SFP28"
+    ethernetMac: "F4:03:43:A7:2B:10"   # Port 1 MAC address
+    # Port 2: F4:03:43:A7:2B:11 (連続した MAC が割り当てられる)
+
+  # Fibre Channel HBA (Network Adapter - Fibre Channel)
+  - class: "00090002"
+    manufacturer: "Marvell Technology Inc."
+    model: "QLogic QLE2772"
+    serial: "FC-R760-1847-001"
+    revision: "32Gb FC Dual Port"
+
+  # InfiniBand HCA (Network Adapter - InfiniBand)
+  - class: "00090003"
+    manufacturer: "NVIDIA Corporation"
+    model: "ConnectX-7 HDR"
+    serial: "IB-R760-1847-001"
+    revision: "200Gb/s InfiniBand"
+
+  # UEFI BIOS Firmware (Firmware - UEFI BIOS)
+  - class: "00130003"
+    manufacturer: "Dell Technologies Inc."
+    model: "PowerEdge R760 UEFI BIOS"
+    serial: "BIOS-R760-1847"
+    revision: "1.8.2"
+
+  # iDRAC Firmware (Firmware - Service Processor)
+  - class: "00130004"
+    manufacturer: "Dell Technologies Inc."
+    model: "iDRAC9 Enterprise"
+    serial: "IDRAC-R760-1847"
+    revision: "7.10.30.00"
+
+  # TPM 2.0 Module (Module - TPM 2.0 Module)
+  - class: "00040009"
+    manufacturer: "Nuvoton Technology Corp."
+    model: "NPCT750"
+    serial: "TPM-R760-1847"
+    revision: "7.2.3.0"
+
+  # Power Supply Unit 1 (Energy Object - AC Power Supply)
+  - class: "000A0003"
+    manufacturer: "Delta Electronics Inc."
+    model: "DPS-1100CB"
+    serial: "PSU-R760-1847-01"
+    revision: "1100W 80+ Titanium"
+
+  # Power Supply Unit 2 (Energy Object - AC Power Supply)
+  - class: "000A0003"
+    manufacturer: "Delta Electronics Inc."
+    model: "DPS-1100CB"
+    serial: "PSU-R760-1847-02"
+    revision: "1100W 80+ Titanium"
+
+  # Cooling Fan Assembly (Cooling - Fan)
+  - class: "000D0001"
+    manufacturer: "Delta Electronics Inc."
+    model: "PFR0612XHE"
+    serial: "FAN-R760-1847-SYS"
+    revision: "System Fan Assembly"
+
+# ============================================================
+# DELTA CERTIFICATE FIELDS (for generate-delta only)
+# ============================================================
+# baseCertificateSerial: "PE760-DC01-2024-1847"
+# deltaSequenceNumber: 1
+# changeDescription: "BIOS firmware update 1.8.2 to 1.9.0 with security patches"
+----
+
+== Appendix B: Component Address Examples
+
+各種ネットワークアダプタのアドレス指定例を示します。
+
+=== Ethernet NIC (有線 LAN)
+
+[source,yaml]
+----
+# 企業向けサーバー用 Ethernet NIC
+- class: "00090001"
+  manufacturer: "Intel Corporation"
+  model: "Ethernet Controller X710-DA4"
+  serial: "INTEL7824X710A"
+  revision: "10GbE Quad Port SFP+"
+  ethernetMac: "68:05:CA:8B:12:A0"
+  # 追加ポート MAC (参考):
+  # Port 2: 68:05:CA:8B:12:A1
+  # Port 3: 68:05:CA:8B:12:A2
+  # Port 4: 68:05:CA:8B:12:A3
+----
+
+=== Wireless LAN Adapter
+
+[source,yaml]
+----
+# ワークステーション用 Wi-Fi 6E アダプタ
+- class: "00090004"
+  manufacturer: "Intel Corporation"
+  model: "Wi-Fi 6E AX211"
+  serial: "WLAN-WS01-2024-001"
+  revision: "Wi-Fi 6E 160MHz Dual-Band"
+  wlanMac: "AC:12:03:F8:7B:44"
+----
+
+=== Bluetooth Adapter
+
+[source,yaml]
+----
+# 統合 Bluetooth アダプタ (Wi-Fi と同一チップ)
+- class: "00090005"
+  manufacturer: "Intel Corporation"
+  model: "Bluetooth 5.3"
+  serial: "BT-WS01-2024-001"
+  revision: "Bluetooth LE Audio Support"
+  bluetoothMac: "AC:12:03:F8:7B:45"
+  # 注: Wi-Fi と Bluetooth で MAC が +1 される構成が一般的
+----
+
+=== 複合ネットワークアダプタ
+
+[source,yaml]
+----
+# Wi-Fi + Bluetooth 複合アダプタ
+- class: "00090004"
+  manufacturer: "Qualcomm Technologies Inc."
+  model: "FastConnect 7800"
+  serial: "QCOM-FC7800-2024"
+  revision: "Wi-Fi 7 + Bluetooth 5.4"
+  wlanMac: "74:DF:BF:C1:23:80"
+  bluetoothMac: "74:DF:BF:C1:23:81"
+----

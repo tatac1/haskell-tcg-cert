@@ -1,0 +1,100 @@
+# IoT Device Platform Configuration
+# Based on IWG Platform Certificate Profile v1.1 and TCG Component Class Registry v1.0
+
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "Raspberry Pi Foundation"
+model: "Raspberry Pi 4 Model B"
+version: "1.5"
+serial: "RPI4B-IOT-2024-7890"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 730   # 2 years for IoT deployment
+keySize: 2048       # Standard security for IoT
+
+# === Extended Platform Information (OPTIONAL) ===
+platformConfigUri: "https://rpi.org/platform-config/rpi4b/pcr-values"
+platformClass: "00000003"        # IoT Device Platform Class
+specificationVersion: "1.1"      # IWG Platform Certificate Profile v1.1
+majorVersion: 1                  # Platform major version
+minorVersion: 5                  # Platform minor version  
+patchVersion: 0                  # Platform patch version
+platformQualifier: "IoT"         # IoT device platform
+
+# === Platform Components (OPTIONAL) ===
+components:
+  # Main System Board
+  - class: "00030003"
+    manufacturer: "Raspberry Pi Foundation"
+    model: "Raspberry Pi 4B Mainboard"
+    serial: "MB-RPI4B-7890"
+    revision: "Rev 1.5"
+    
+  # ARM Cortex CPU
+  - class: "00010003"
+    manufacturer: "Broadcom Inc."
+    model: "BCM2711 ARM Cortex-A72"
+    serial: "CPU-RPI4B-7890"
+    revision: "Quad-core 1.8GHz"
+    
+  # System Memory - LPDDR4
+  - class: "00060005"
+    manufacturer: "Samsung Electronics"
+    model: "K4F6E304HB-MGCJ"
+    serial: "MEM-RPI4B-7890"
+    revision: "8GB LPDDR4-3200"
+    
+  # MicroSD Storage
+  - class: "00070004"
+    manufacturer: "SanDisk Corporation"
+    model: "Ultra microSDXC"
+    serial: "SD-RPI4B-7890"
+    revision: "128GB Class 10"
+    
+  # Wireless Network Interface - WiFi
+  - class: "00080002"
+    manufacturer: "Cypress Semiconductor"
+    model: "CYW43455 WiFi/Bluetooth"
+    serial: "WIFI-RPI4B-7890"
+    revision: "802.11ac Dual Band"
+    
+  # Bluetooth Interface
+  - class: "00080003"
+    manufacturer: "Cypress Semiconductor"
+    model: "CYW43455 Bluetooth"
+    serial: "BT-RPI4B-7890"
+    revision: "Bluetooth 5.0 BLE"
+    
+  # Ethernet Interface
+  - class: "00080001"
+    manufacturer: "Microchip Technology"
+    model: "LAN7515 Ethernet"
+    serial: "ETH-RPI4B-7890"
+    revision: "Gigabit Ethernet"
+    
+  # USB Controller
+  - class: "00090001"
+    manufacturer: "Broadcom Inc."
+    model: "BCM2711 USB Controller"
+    serial: "USB-RPI4B-7890"
+    revision: "USB 3.0 + USB 2.0"
+    
+  # GPU - Graphics Processing Unit
+  - class: "00020001"
+    manufacturer: "Broadcom Inc."
+    model: "VideoCore VI GPU"
+    serial: "GPU-RPI4B-7890"
+    revision: "OpenGL ES 3.0"
+    
+  # Camera Interface
+  - class: "000D0001"
+    manufacturer: "Raspberry Pi Foundation"
+    model: "MIPI CSI Camera Port"
+    serial: "CAM-RPI4B-7890"
+    revision: "15-pin connector"
+    
+  # Boot Firmware
+  - class: "00130004"
+    manufacturer: "Raspberry Pi Foundation"
+    model: "Pi 4 Boot Firmware"
+    serial: "BOOT-RPI4B-7890"
+    revision: "2023.12.06"

@@ -1,0 +1,126 @@
+# Congatec conga-PA5 Embedded Platform Configuration
+# Data sources: dmidecode (SMBIOS), ip link show, lspci -nn, tpm2_getekcertificate
+# Host: 192.168.1.16
+# Date: 2024
+#
+# Component class values are from TCG Component Class Registry v1.0 rev14
+# Reference: spec/TCG_Component_Class_Registry_v1.0_rev14_pub.pdf
+
+# =============================================================================
+# BASIC PLATFORM INFORMATION (from SMBIOS via dmidecode)
+# =============================================================================
+# Source: dmidecode -t system
+manufacturer: "congatec"              # SMBIOS System Information: Manufacturer
+model: "conga-PA5"                    # SMBIOS System Information: Product Name
+version: "B.3"                        # SMBIOS System Information: Version
+serial: "000005041335"                # SMBIOS System Information: Serial Number
+
+# =============================================================================
+# CERTIFICATE GENERATION PARAMETERS (user/operator configuration)
+# =============================================================================
+validityDays: 1095                    # Certificate validity (operator decision)
+keySize: 2048                         # Key size (operator decision)
+
+# =============================================================================
+# EXTENDED PLATFORM INFORMATION
+# =============================================================================
+# Source: dmidecode -t bios (BIOS Revision: 5.12)
+majorVersion: 5                       # SMBIOS BIOS Information: Major Release
+minorVersion: 12                      # SMBIOS BIOS Information: Minor Release
+
+# =============================================================================
+# PLATFORM COMPONENTS
+# =============================================================================
+# Component class values per TCG Component Class Registry v1.0 rev14 (Table 1)
+# Many values have SMBIOS source mappings defined in the registry.
+
+components:
+  # ---------------------------------------------------------------------------
+  # System Board (from SMBIOS via dmidecode -t baseboard)
+  # ---------------------------------------------------------------------------
+  # Source: dmidecode -t baseboard
+  # TCG Registry: 0x00030003 = Motherboard (IC Board Components)
+  - class: "00030003"
+    manufacturer: "congatec"          # SMBIOS Base Board: Manufacturer
+    model: "conga-PA5"                # SMBIOS Base Board: Product Name
+    serial: "000005041335"            # SMBIOS Base Board: Serial Number
+    revision: "B.3"                   # SMBIOS Base Board: Version
+
+  # ---------------------------------------------------------------------------
+  # Processor (from SMBIOS via dmidecode -t processor)
+  # ---------------------------------------------------------------------------
+  # Source: dmidecode -t processor
+  # TCG Registry: 0x00010009 = SoC (System-on-a-Chip) - Apollo Lake is an SoC
+  # Note: Intel disabled Processor Serial Number (PSN) since Pentium III
+  - class: "00010009"
+    manufacturer: "Intel(R) Corporation"   # SMBIOS Processor: Manufacturer
+    model: "Intel(R) Atom(TM) Processor E3950 @ 1.60GHz"  # SMBIOS Processor: Version
+    revision: "Family 6 Model 92 Stepping 10"  # SMBIOS Processor: Signature
+
+  # ---------------------------------------------------------------------------
+  # Memory (from SMBIOS via dmidecode -t memory)
+  # ---------------------------------------------------------------------------
+  # Source: dmidecode -t memory
+  # TCG Registry: 0x00060004 = DRAM Memory (SMBIOS Memory Device Type Table 78, value 0x03)
+  # Note: On-board soldered memory - serial shows "00000000" placeholder
+  - class: "00060004"
+    manufacturer: "Unknown"           # SMBIOS Memory Device: Manufacturer
+    model: "Unknown"                  # SMBIOS Memory Device: Part Number
+    serial: "00000000"                # SMBIOS Memory Device: Serial Number
+    revision: "LPDDR4 2400 MT/s"      # SMBIOS Memory Device: Type + Speed
+
+  # ---------------------------------------------------------------------------
+  # Storage (from lsblk)
+  # ---------------------------------------------------------------------------
+  # Source: lsblk -o NAME,MODEL,SERIAL
+  # TCG Registry: 0x00070003 = SSD Drive (Storage Components)
+  # Note: Serial not available for this device
+  - class: "00070003"
+    manufacturer: "Unknown"           # Not available in lsblk
+    model: "16GB SATA Flash"          # lsblk MODEL field
+
+  # ---------------------------------------------------------------------------
+  # Ethernet NIC 1 (from lspci and ip link)
+  # ---------------------------------------------------------------------------
+  # Source: lspci -nn (PCI 02:00.0), ip link show enp2s0
+  # TCG Registry: 0x00090002 = Ethernet Adapter (Network Adapter Components)
+  - class: "00090002"
+    manufacturer: "Intel Corporation"       # lspci vendor name
+    model: "I211 Gigabit Network Connection"  # lspci device name
+    revision: "8086:1539"             # lspci vendor:device ID
+    addresses:
+      - ethernetMac: "00:13:95:38:01:EA"    # ip link show: link/ether
+
+  # ---------------------------------------------------------------------------
+  # Ethernet NIC 2 (from lspci and ip link)
+  # ---------------------------------------------------------------------------
+  # Source: lspci -nn (PCI 03:00.0), ip link show enp3s0
+  # TCG Registry: 0x00090002 = Ethernet Adapter (Network Adapter Components)
+  - class: "00090002"
+    manufacturer: "Intel Corporation"
+    model: "I211 Gigabit Network Connection"
+    revision: "8086:1539"
+    addresses:
+      - ethernetMac: "00:13:95:38:01:EB"    # ip link show: link/ether
+
+  # ---------------------------------------------------------------------------
+  # TPM 2.0 Module (from TPM EK Certificate via tpm2_getekcertificate)
+  # ---------------------------------------------------------------------------
+  # Source: tpm2_getekcertificate + openssl x509 parsing
+  # TCG Registry: 0x00040009 = TPM (Module Components)
+  # EK Certificate Subject Alternative Name provides TPM identity
+  - class: "00040009"
+    manufacturer: "Infineon Technologies AG"  # EK Cert SAN: tpmManufacturer=id:49465800 (IFX)
+    model: "SLB 9670 TPM2.0"                  # EK Cert SAN: tpmModel
+    serial: "502CDF08"                        # EK Cert: Serial Number (hex)
+    revision: "id:0728"                       # EK Cert SAN: tpmVersion
+
+  # ---------------------------------------------------------------------------
+  # UEFI BIOS Firmware (from SMBIOS via dmidecode -t bios)
+  # ---------------------------------------------------------------------------
+  # Source: dmidecode -t bios
+  # TCG Registry: 0x00130003 = System firmware (Firmware Components)
+  - class: "00130003"
+    manufacturer: "American Megatrends Inc."  # SMBIOS BIOS: Vendor
+    model: "PA50R148"                         # SMBIOS BIOS: Version
+    revision: "04/25/2019"                    # SMBIOS BIOS: Release Date

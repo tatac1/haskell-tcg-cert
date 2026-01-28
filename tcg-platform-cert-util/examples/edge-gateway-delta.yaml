@@ -1,0 +1,90 @@
+# Edge Gateway Delta Platform Configuration
+# Based on IWG Platform Certificate Profile v1.1 - Delta Certificate Extension
+# This delta certificate tracks changes from the base edge-gateway.yaml
+
+# === Basic Platform Information (REQUIRED) ===
+manufacturer: "Advantech Co., Ltd."
+model: "ARK-3531L Edge Gateway"
+version: "1.1.0"  # Version update from 1.0.8
+serial: "EDGE-ADV-ARK3531-2024-123"
+
+# === Certificate Properties (OPTIONAL) ===
+validityDays: 365   # Shorter validity for delta certificate
+keySize: 2048       # Maintain security level
+
+# === Delta-Specific Configuration ===
+# Base certificate reference (conceptual - implementation pending)
+baseCertificateSerial: "EDGE-ADV-ARK3531-2024-123"
+deltaSequenceNumber: 1
+changeDescription: "5G modem upgrade and additional I/O expansion"
+
+# === Updated Platform Components ===
+# Only components that have changed from the base certificate
+components:
+  # Upgraded Cellular Modem - 5G upgrade
+  - class: "00080004"
+    manufacturer: "Quectel Wireless Solutions"
+    model: "RM520N-GL 5G Module"  # Upgraded from RM502Q-AE
+    serial: "5G-ARK3531-123-NEW"  # New serial for upgraded module
+    revision: "5G NR Sub-6GHz + mmWave"  # Enhanced capabilities
+    
+  # Updated Boot Firmware - Security and performance update
+  - class: "00130004"
+    manufacturer: "Advantech Co., Ltd."
+    model: "ARK-3531L U-Boot"
+    serial: "BOOT-ARK3531-123"
+    revision: "U-Boot 2023.01"  # Updated from 2022.04
+    
+  # New I/O Expansion Module - Additional interfaces
+  - class: "00100003"
+    manufacturer: "Advantech Co., Ltd."
+    model: "4-Port RS-485 Expansion"
+    serial: "IO-EXP-ARK3531-123"  # New component
+    revision: "Isolated RS-485 Interface"
+    
+  # New AI Accelerator Module - Edge AI capability
+  - class: "00020003"
+    manufacturer: "Google Inc."
+    model: "Coral AI Accelerator"
+    serial: "AI-ARK3531-123"  # New component
+    revision: "Edge TPU ML Accelerator"
+    
+  # Additional Storage - Enhanced data retention
+  - class: "00070003"
+    manufacturer: "Western Digital"
+    model: "WD Red SA500 NAS SSD"
+    serial: "SSD-ARK3531-123"  # New component
+    revision: "500GB Industrial SSD"
+    
+  # Updated WiFi Module - WiFi 6 upgrade
+  - class: "00080002"
+    manufacturer: "Intel Corporation"
+    model: "AX200 WiFi 6"
+    serial: "WIFI-ARK3531-123"
+    revision: "802.11ax WiFi 6 + Bluetooth 5.2"  # Upgraded from old version
+    
+  # New GPS Module - Location services
+  - class: "00120001"
+    manufacturer: "u-blox AG"
+    model: "ZED-F9P GNSS Module"
+    serial: "GPS-ARK3531-123"  # New component
+    revision: "Multi-band RTK GNSS"
+    
+  # New Security Module - Enhanced security
+  - class: "00040008"
+    manufacturer: "NXP Semiconductors"
+    model: "EdgeLock SE050 Secure Element"
+    serial: "SEC-ARK3531-123"  # New component
+    revision: "IoT Security Element"
+
+# === Change Summary ===
+# Changes from base certificate:
+# 1. Cellular modem upgrade: RM502Q-AE → RM520N-GL (added mmWave support)
+# 2. Boot firmware update: U-Boot 2022.04 → U-Boot 2023.01
+# 3. Added I/O expansion: 4-Port RS-485 interface module
+# 4. Added AI accelerator: Google Coral Edge TPU
+# 5. Added industrial SSD: 500GB WD Red SA500 for data persistence
+# 6. WiFi upgrade: Enhanced WiFi 6 with better performance
+# 7. Added GPS module: u-blox ZED-F9P for precise positioning
+# 8. Added security element: EdgeLock SE050 for enhanced security
+# 9. Platform version update: 1.0.8 → 1.1.0
