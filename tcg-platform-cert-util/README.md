@@ -715,6 +715,51 @@ cd tcg-platform-cert-util
 stack build
 ```
 
+### Building Static Linux Binaries
+
+You can build a statically-linked Linux binary using Podman (or Docker) on macOS or Linux. This produces a portable binary that runs on any Linux system without runtime dependencies.
+
+#### Requirements
+
+- Podman or Docker installed and running
+- On macOS: `podman machine start` to start the VM
+
+#### Build Commands
+
+```bash
+# Navigate to the repository root
+cd crypton-certificate-oss
+
+# Build the static binary image
+podman build -f Dockerfile.static -t tcg-platform-cert-util-static --target extract .
+
+# Extract the binary to ./dist directory
+mkdir -p dist
+podman run --rm -v $(pwd)/dist:/dist tcg-platform-cert-util-static
+```
+
+The static binary will be available at `dist/tcg-platform-cert-util`.
+
+#### Verify the Binary
+
+```bash
+# Check that it's statically linked
+file dist/tcg-platform-cert-util
+# Output: ELF 64-bit LSB executable, ... statically linked ...
+
+# Test the binary
+podman run --rm -v $(pwd)/dist:/dist alpine:3.20 /dist/tcg-platform-cert-util --help
+```
+
+#### Build Details
+
+The Dockerfile uses:
+- **Alpine Linux 3.20** with musl libc for true static linking
+- **GHC 9.8.2** from Alpine packages
+- **Cabal** for building with static linking flags (`-static -optl-static -optl-pthread`)
+
+The resulting binary (~46MB) has no dynamic dependencies and can run on any Linux system with the matching architecture (aarch64 or x86_64 depending on your build host).
+
 **Build Status (All Packages Successfully Built ✅):**
 - **tcg-platform-cert**: Core library with government certification support
 - **tcg-platform-cert-util**: Command-line utility with all features

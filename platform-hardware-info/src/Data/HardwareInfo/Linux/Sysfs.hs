@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE CPP #-}
 -- |
 -- Module      : Data.HardwareInfo.Linux.Sysfs
@@ -107,8 +108,8 @@ listPciDevices = do
 -- | Read PCI device vendor and device IDs
 readPciDeviceInfo :: FilePath -> IO (Maybe (Text, Text))
 readPciDeviceInfo devicePath = do
-  vendorResult <- try $ TIO.readFile (devicePath </> "vendor")
-  deviceResult <- try $ TIO.readFile (devicePath </> "device")
+  vendorResult <- try $ TIO.readFile (devicePath </> "vendor") :: IO (Either SomeException Text)
+  deviceResult <- try $ TIO.readFile (devicePath </> "device") :: IO (Either SomeException Text)
   case (vendorResult, deviceResult) of
     (Right vendor, Right device) ->
       return $ Just (sanitize vendor, sanitize device)

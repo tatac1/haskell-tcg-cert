@@ -102,12 +102,9 @@ getNvmeDevicesFromCli = do
 parseNvmeListJson :: Value -> [NvmeDeviceInfo]
 parseNvmeListJson (Object obj) =
   case Aeson.parseMaybe (.: "Devices") obj of
-    Just (Array devices) -> concatMap parseDevice (toList devices)
+    Just (Array devices) -> concatMap parseDevice (foldr (:) [] devices)
     _ -> []
   where
-    toList (Array arr) = foldr (:) [] arr
-    toList _ = []
-
     parseDevice (Object dev) =
       case Aeson.parseMaybe parseNvmeDevice dev of
         Just info -> [info]

@@ -1,0 +1,29 @@
+resolver: lts-23.8
+
+packages:
+  - platform-hardware-info
+  - tcg-platform-cert
+  - tcg-platform-cert-validation
+  - tcg-platform-cert-util
+
+extra-deps:
+  - crypton-pem-0.3.0
+  - crypton-asn1-encoding-0.10.0
+  - crypton-asn1-parse-0.10.0
+  - crypton-asn1-types-0.4.1
+  - time-hourglass-0.3.0
+  # crypton-x509 packages with AC support
+  - git: https://github.com/tatac1/crypton-certificate.git
+    commit: 0c400775fcf48340c36d6c7c887e201b4756ef49
+    subdirs:
+      - crypton-x509
+      - crypton-x509-store
+      - crypton-x509-validation
+      - crypton-x509-system
+      - x509-ac-validation
+
+nix:
+  pure: false
+
+ghc-options:
+  "$locals": "-optc-Wno-error -optc-Wno-nullability-completeness -optc-Wno-expansion-to-defined"
