@@ -1,0 +1,20 @@
+-- Static build configuration for Windows
+-- Usage: cabal build --project-file=cabal.project.windows
+
+import: cabal.project
+
+-- Disable shared libraries globally
+executable-dynamic: False
+shared: False
+
+-- Global GHC options for static linking on Windows
+program-options
+  ghc-options: -static -optl-static
+
+-- Static linking flags for the main executable
+package tcg-platform-cert-util
+  ghc-options: -static -optl-static
+
+-- Package-specific flags
+package crypton
+  flags: -use_target_attributes

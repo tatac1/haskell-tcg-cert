@@ -127,6 +127,68 @@ jobs:
           path: dist/tcg-platform-cert-util-*
           retention-days: 7
 
+  # Windows build
+  build-windows:
+    name: Windows x86_64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6'
+          cabal-version: '3.10'
+
+      - name: Cache Cabal
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Roaming\cabal\packages
+            ~\AppData\Roaming\cabal\store
+            dist-newstyle
+          key: ${{ runner.os }}-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
+          restore-keys: |
+            ${{ runner.os }}-cabal-
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update Cabal
+        run: cabal update
+
+      - name: Build
+        run: cabal build --project-file=cabal.project.windows tcg-platform-cert-util
+
+      - name: Copy binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          BINARY=$(cabal list-bin tcg-platform-cert-util 2>/dev/null | grep -v "^Up to date" | tail -1)
+          cp "$BINARY" "dist/tcg-platform-cert-util-${{ steps.version.outputs.version }}-windows-x86_64.exe"
+
+      - name: Verify binary
+        shell: bash
+        run: |
+          file dist/tcg-platform-cert-util-*.exe
+          ls -lh dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: dist/tcg-platform-cert-util-*.exe
+          retention-days: 7
+
   # Create macOS Universal Binary
   build-macos-universal:
     name: macOS Universal
@@ -183,7 +245,7 @@ jobs:
   # Create GitHub Release with all binaries
   release:
     name: Create Release
-    needs: [build-linux, build-macos-universal]
+    needs: [build-linux, build-macos-universal, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -238,6 +300,7 @@ jobs:
             | macOS | Universal | `tcg-platform-cert-util-${{ steps.version.outputs.version }}-macos-universal` |
             | macOS | Intel | `tcg-platform-cert-util-${{ steps.version.outputs.version }}-macos-x86_64` |
             | macOS | Apple Silicon | `tcg-platform-cert-util-${{ steps.version.outputs.version }}-macos-arm64` |
+            | Windows | x86_64 | `tcg-platform-cert-util-${{ steps.version.outputs.version }}-windows-x86_64.exe` |
 
             ### Linux binaries
             Statically linked with musl libc. Works on any Linux distribution.
@@ -245,6 +308,9 @@ jobs:
             ### macOS binaries
             - **Universal**: Works on both Intel and Apple Silicon Macs
             - Architecture-specific binaries also available
+
+            ### Windows binaries
+            Statically linked executable. No additional DLLs required.
 
             ### Verification
             ```bash
