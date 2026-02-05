@@ -3,3 +3,14 @@ packages:
   tcg-platform-cert
   tcg-platform-cert-validation
   tcg-platform-cert-util
+
+-- crypton-x509 packages with Attribute Certificate support
+source-repository-package
+  type: git
+  location: https://github.com/tatac1/crypton-certificate.git
+  tag: 70a49299d4225349697bab67b979f6a5cea79d11
+  subdir: crypton-x509
+          crypton-x509-store
+          crypton-x509-validation
+          crypton-x509-system
+          x509-ac-validation

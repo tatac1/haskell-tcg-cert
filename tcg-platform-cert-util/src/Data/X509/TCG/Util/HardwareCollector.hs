@@ -104,21 +104,17 @@ componentClassToPaccor cls = P.PaccorComponentClass
 -- | Convert ComponentAddress to PACCOR Address format
 addressToPaccor :: ComponentAddress -> P.PaccorAddress
 addressToPaccor addr = case addr of
-  EthernetMAC mac -> P.PaccorAddress
-    { P.paccorEthernetMac = Just mac
-    , P.paccorWlanMac = Nothing
-    , P.paccorBluetoothMac = Nothing
-    }
-  WirelessMAC mac -> P.PaccorAddress
-    { P.paccorEthernetMac = Nothing
-    , P.paccorWlanMac = Just mac
-    , P.paccorBluetoothMac = Nothing
-    }
-  BluetoothMAC mac -> P.PaccorAddress
-    { P.paccorEthernetMac = Nothing
-    , P.paccorWlanMac = Nothing
-    , P.paccorBluetoothMac = Just mac
-    }
+  EthernetMAC mac -> emptyAddress { P.paccorEthernetMac = Just mac }
+  WirelessMAC mac -> emptyAddress { P.paccorWlanMac = Just mac }
+  BluetoothMAC mac -> emptyAddress { P.paccorBluetoothMac = Just mac }
+  PCIAddress pci -> emptyAddress { P.paccorPciAddress = Just pci }
+  USBAddress usb -> emptyAddress { P.paccorUsbAddress = Just usb }
+  SATAAddress sata -> emptyAddress { P.paccorSataAddress = Just sata }
+  WWNAddress wwn -> emptyAddress { P.paccorWwnAddress = Just wwn }
+  NVMeAddress nvme -> emptyAddress { P.paccorNvmeAddress = Just nvme }
+  LogicalAddress logical -> emptyAddress { P.paccorLogicalAddress = Just logical }
+  where
+    emptyAddress = P.PaccorAddress Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | Convert Bool to Text
 boolToText :: Bool -> Text

@@ -83,11 +83,18 @@ dropPrefix prefix field
       | c >= 'A' && c <= 'Z' = toEnum (fromEnum c + 32)
       | otherwise = c
 
--- | Address configuration for network components
+-- | Address configuration for component addresses
+-- Supports all TCG Platform Certificate defined address types
 data AddressConfig = AddressConfig
-  { addrEthernetMac :: Maybe String    -- IEEE 802 MAC Address
-  , addrWlanMac :: Maybe String        -- IEEE 802.11 Wireless MAC
-  , addrBluetoothMac :: Maybe String   -- Bluetooth Device Address
+  { addrEthernetMac :: Maybe String    -- ^ IEEE 802 MAC Address (OID: 2.23.133.17.1)
+  , addrWlanMac :: Maybe String        -- ^ IEEE 802.11 Wireless MAC (OID: 2.23.133.17.2)
+  , addrBluetoothMac :: Maybe String   -- ^ Bluetooth Device Address (OID: 2.23.133.17.3)
+  , addrPciAddress :: Maybe String     -- ^ PCI bus address (OID: 2.23.133.17.4)
+  , addrUsbAddress :: Maybe String     -- ^ USB bus address (OID: 2.23.133.17.5)
+  , addrSataAddress :: Maybe String    -- ^ SATA/SAS bus path (OID: 2.23.133.17.6)
+  , addrWwnAddress :: Maybe String     -- ^ World Wide Name (OID: 2.23.133.17.7)
+  , addrNvmeAddress :: Maybe String    -- ^ NVMe device address (OID: 2.23.133.17.8)
+  , addrLogicalAddress :: Maybe String -- ^ Logical/software-defined address (OID: 2.23.133.17.9)
   } deriving (Show, Eq, Generic)
 
 addressOptions :: Options

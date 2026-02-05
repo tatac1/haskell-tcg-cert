@@ -47,7 +47,7 @@ import Control.Applicative ((<|>))
 import Data.Aeson hiding (encodeFile)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
@@ -89,13 +89,20 @@ data PaccorComponentClass = PaccorComponentClass
   , componentClassValue :: Text       -- Hex value like "00000001"
   } deriving (Show, Eq, Generic)
 
--- | Component address (MAC addresses)
--- Supports both simple format (ETHERNETMAC, WLANMAC, BLUETOOTHMAC)
--- and OID-based format (ADDRESSTYPE, ADDRESSVALUE)
+-- | Component address
+-- Supports MAC addresses (ETHERNETMAC, WLANMAC, BLUETOOTHMAC),
+-- bus addresses (PCI, USB, SATA), and storage identifiers (WWN, NVMe).
+-- Also supports OID-based format (ADDRESSTYPE, ADDRESSVALUE)
 data PaccorAddress = PaccorAddress
   { paccorEthernetMac :: Maybe Text
   , paccorWlanMac :: Maybe Text
   , paccorBluetoothMac :: Maybe Text
+  , paccorPciAddress :: Maybe Text      -- ^ PCI address (e.g., "0000:00:1f.6")
+  , paccorUsbAddress :: Maybe Text      -- ^ USB address
+  , paccorSataAddress :: Maybe Text     -- ^ SATA/SAS bus path
+  , paccorWwnAddress :: Maybe Text      -- ^ World Wide Name
+  , paccorNvmeAddress :: Maybe Text     -- ^ NVMe device address
+  , paccorLogicalAddress :: Maybe Text  -- ^ Logical/software-defined address
   } deriving (Show, Eq, Generic)
 
 -- | OID-based address format used in extended paccor JSON
@@ -112,10 +119,21 @@ instance FromJSON PaccorOIDAddress where
 -- | Convert OID-based address to simple format
 oidAddressToSimple :: PaccorOIDAddress -> PaccorAddress
 oidAddressToSimple addr = case T.unpack (addressType addr) of
-  "2.23.133.17.1" -> PaccorAddress (Just (addressValue addr)) Nothing Nothing  -- Ethernet
-  "2.23.133.17.2" -> PaccorAddress Nothing (Just (addressValue addr)) Nothing  -- WLAN
-  "2.23.133.17.3" -> PaccorAddress Nothing Nothing (Just (addressValue addr))  -- Bluetooth
-  _               -> PaccorAddress (Just (addressValue addr)) Nothing Nothing  -- Default to Ethernet
+  -- TCG defined OIDs for ComponentAddress types
+  "2.23.133.17.1" -> emptyPaccorAddress { paccorEthernetMac = Just (addressValue addr) }  -- Ethernet
+  "2.23.133.17.2" -> emptyPaccorAddress { paccorWlanMac = Just (addressValue addr) }      -- WLAN
+  "2.23.133.17.3" -> emptyPaccorAddress { paccorBluetoothMac = Just (addressValue addr) } -- Bluetooth
+  "2.23.133.17.4" -> emptyPaccorAddress { paccorPciAddress = Just (addressValue addr) }   -- PCI
+  "2.23.133.17.5" -> emptyPaccorAddress { paccorUsbAddress = Just (addressValue addr) }   -- USB
+  "2.23.133.17.6" -> emptyPaccorAddress { paccorSataAddress = Just (addressValue addr) }  -- SATA
+  "2.23.133.17.7" -> emptyPaccorAddress { paccorWwnAddress = Just (addressValue addr) }   -- WWN
+  "2.23.133.17.8" -> emptyPaccorAddress { paccorNvmeAddress = Just (addressValue addr) }  -- NVMe
+  "2.23.133.17.9" -> emptyPaccorAddress { paccorLogicalAddress = Just (addressValue addr) } -- Logical
+  _               -> emptyPaccorAddress { paccorEthernetMac = Just (addressValue addr) }  -- Default to Ethernet
+
+-- | Empty PaccorAddress with all fields set to Nothing
+emptyPaccorAddress :: PaccorAddress
+emptyPaccorAddress = PaccorAddress Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | Component information from paccor JSON
 data PaccorComponent = PaccorComponent
@@ -231,20 +249,25 @@ instance FromJSON PaccorComponentClass where
 
 instance FromJSON PaccorAddress where
   parseJSON = withObject "PaccorAddress" $ \v -> do
-    -- Try simple format first
-    mEthernet <- v .:? "ETHERNETMAC"
-    mWlan <- v .:? "WLANMAC"
-    mBluetooth <- v .:? "BLUETOOTHMAC"
-    -- Check for OID-based format
+    -- Check for OID-based format first
     mAddrType <- v .:? "ADDRESSTYPE"
     mAddrValue <- v .:? "ADDRESSVALUE"
     case (mAddrType, mAddrValue) of
       (Just addrType, Just addrValue) ->
         -- OID-based format
         return $ oidAddressToSimple (PaccorOIDAddress addrType addrValue)
-      _ ->
-        -- Simple format
-        return $ PaccorAddress mEthernet mWlan mBluetooth
+      _ -> do
+        -- Simple/direct format - parse all address types
+        mEthernet <- v .:? "ETHERNETMAC"
+        mWlan <- v .:? "WLANMAC"
+        mBluetooth <- v .:? "BLUETOOTHMAC"
+        mPci <- v .:? "PCIADDRESS"
+        mUsb <- v .:? "USBADDRESS"
+        mSata <- v .:? "SATAADDRESS"
+        mWwn <- v .:? "WWNADDRESS"
+        mNvme <- v .:? "NVMEADDRESS"
+        mLogical <- v .:? "LOGICALADDRESS"
+        return $ PaccorAddress mEthernet mWlan mBluetooth mPci mUsb mSata mWwn mNvme mLogical
 
 instance FromJSON PaccorComponent where
   parseJSON = withObject "PaccorComponent" $ \v -> PaccorComponent
@@ -432,13 +455,25 @@ paccorToYamlConfig paccor = PlatformCertConfig
       { addrEthernetMac = fmap T.unpack (paccorEthernetMac addr)
       , addrWlanMac = fmap T.unpack (paccorWlanMac addr)
       , addrBluetoothMac = fmap T.unpack (paccorBluetoothMac addr)
+      , addrPciAddress = fmap T.unpack (paccorPciAddress addr)
+      , addrUsbAddress = fmap T.unpack (paccorUsbAddress addr)
+      , addrSataAddress = fmap T.unpack (paccorSataAddress addr)
+      , addrWwnAddress = fmap T.unpack (paccorWwnAddress addr)
+      , addrNvmeAddress = fmap T.unpack (paccorNvmeAddress addr)
+      , addrLogicalAddress = fmap T.unpack (paccorLogicalAddress addr)
       }
 
     hasAnyAddress :: AddressConfig -> Maybe ()
     hasAnyAddress addr
-      | addrEthernetMac addr /= Nothing = Just ()
-      | addrWlanMac addr /= Nothing = Just ()
-      | addrBluetoothMac addr /= Nothing = Just ()
+      | isJust (addrEthernetMac addr) = Just ()
+      | isJust (addrWlanMac addr) = Just ()
+      | isJust (addrBluetoothMac addr) = Just ()
+      | isJust (addrPciAddress addr) = Just ()
+      | isJust (addrUsbAddress addr) = Just ()
+      | isJust (addrSataAddress addr) = Just ()
+      | isJust (addrWwnAddress addr) = Just ()
+      | isJust (addrNvmeAddress addr) = Just ()
+      | isJust (addrLogicalAddress addr) = Just ()
       | otherwise = Nothing
 
     -- Convert OID to hash algorithm name

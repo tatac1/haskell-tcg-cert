@@ -41,6 +41,7 @@ module Data.X509.TCG.Delta
     -- * Marshalling Operations
     encodeSignedDeltaPlatformCertificate,
     decodeSignedDeltaPlatformCertificate,
+    decodeSignedDeltaPlatformCertificateWithLimit,
 
     -- * Accessor Functions
     getDeltaPlatformCertificate,
@@ -329,6 +330,14 @@ encodeSignedDeltaPlatformCertificate = encodeSignedObject
 -- | Decode a DER-encoded bytestring to a SignedDeltaPlatformCertificate
 decodeSignedDeltaPlatformCertificate :: B.ByteString -> Either String SignedDeltaPlatformCertificate
 decodeSignedDeltaPlatformCertificate = decodeSignedObject
+
+-- | Decode a DER-encoded bytestring with a size limit
+-- Returns Left if the input exceeds the provided maximum size.
+decodeSignedDeltaPlatformCertificateWithLimit :: Int -> B.ByteString -> Either String SignedDeltaPlatformCertificate
+decodeSignedDeltaPlatformCertificateWithLimit maxBytes bs
+  | B.length bs > maxBytes =
+      Left ("DER input exceeds maximum size: " ++ show maxBytes)
+  | otherwise = decodeSignedDeltaPlatformCertificate bs
 
 -- * Accessor Functions
 

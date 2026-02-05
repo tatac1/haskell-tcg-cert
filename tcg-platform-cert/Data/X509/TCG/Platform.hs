@@ -32,6 +32,7 @@ module Data.X509.TCG.Platform
     -- * Marshalling Operations
     encodeSignedPlatformCertificate,
     decodeSignedPlatformCertificate,
+    decodeSignedPlatformCertificateWithLimit,
 
     -- * Accessor Functions
     getPlatformCertificate,
@@ -254,6 +255,14 @@ encodeSignedPlatformCertificate = encodeSignedObject
 -- | Decode a DER-encoded bytestring to a SignedPlatformCertificate
 decodeSignedPlatformCertificate :: B.ByteString -> Either String SignedPlatformCertificate
 decodeSignedPlatformCertificate = decodeSignedObject
+
+-- | Decode a DER-encoded bytestring with a size limit
+-- Returns Left if the input exceeds the provided maximum size.
+decodeSignedPlatformCertificateWithLimit :: Int -> B.ByteString -> Either String SignedPlatformCertificate
+decodeSignedPlatformCertificateWithLimit maxBytes bs
+  | B.length bs > maxBytes =
+      Left ("DER input exceeds maximum size: " ++ show maxBytes)
+  | otherwise = decodeSignedPlatformCertificate bs
 
 -- | Extract the PlatformCertificateInfo from a SignedPlatformCertificate
 getPlatformCertificate :: SignedPlatformCertificate -> PlatformCertificateInfo

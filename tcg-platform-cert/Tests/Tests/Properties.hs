@@ -22,6 +22,10 @@ module Tests.Properties (
 import Test.Tasty
 import Test.Tasty.QuickCheck
 import Data.ASN1.Types (ASN1Object(..), ASN1)
+import Control.Exception (SomeException, evaluate, try)
+import qualified Data.ByteString as B
+import Data.Either (isLeft)
+import Data.Word (Word8)
 import Data.X509.TCG.Platform
 import Data.X509.TCG.Delta
 import Data.X509.TCG.Component
@@ -154,5 +158,44 @@ tests = testGroup "ASN.1 Marshalling Properties"
         , testProperty "ChangeType roundtrip" $
             property_unmarshall_marshall_id @ChangeType
         ]
+    ]
+  , testGroup "Decode Size Limit Properties"
+    [ testProperty "Platform decodeWithLimit rejects when limit too small" $
+        \(bytes :: [Word8]) ->
+          let bs = B.pack bytes
+              len = B.length bs
+          in if len == 0
+               then True
+               else isLeft (decodeSignedPlatformCertificateWithLimit (len - 1) bs)
+
+    , testProperty "Platform decodeWithLimit matches decode when limit >= length" $
+        \(bytes :: [Word8]) (NonNegative extra) -> ioProperty $ do
+          let bs = B.pack bytes
+              limit = B.length bs + extra
+          res <- try (evaluate (decodeSignedPlatformCertificate bs))
+            :: IO (Either SomeException (Either String SignedPlatformCertificate))
+          case res of
+            Left _ -> pure True -- ignore ill-formed inputs that throw
+            Right decoded ->
+              pure (decodeSignedPlatformCertificateWithLimit limit bs == decoded)
+
+    , testProperty "Delta decodeWithLimit rejects when limit too small" $
+        \(bytes :: [Word8]) ->
+          let bs = B.pack bytes
+              len = B.length bs
+          in if len == 0
+               then True
+               else isLeft (decodeSignedDeltaPlatformCertificateWithLimit (len - 1) bs)
+
+    , testProperty "Delta decodeWithLimit matches decode when limit >= length" $
+        \(bytes :: [Word8]) (NonNegative extra) -> ioProperty $ do
+          let bs = B.pack bytes
+              limit = B.length bs + extra
+          res <- try (evaluate (decodeSignedDeltaPlatformCertificate bs))
+            :: IO (Either SomeException (Either String SignedDeltaPlatformCertificate))
+          case res of
+            Left _ -> pure True -- ignore ill-formed inputs that throw
+            Right decoded ->
+              pure (decodeSignedDeltaPlatformCertificateWithLimit limit bs == decoded)
     ]
   ]
