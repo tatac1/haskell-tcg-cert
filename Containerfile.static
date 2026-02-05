@@ -8,7 +8,8 @@
 # Stage 1: Build environment
 # =============================================================================
 # Use pre-built GHC with musl support for true static linking
-FROM utdemir/ghc-musl:v27-ghc964 AS builder
+# Image from: https://discourse.haskell.org/t/ghc-musl-docker-manifests-base-image-updated-to-alpine-3-23/13370
+FROM benz0li/ghc-musl:9.6.7 AS builder
 
 WORKDIR /build
 
