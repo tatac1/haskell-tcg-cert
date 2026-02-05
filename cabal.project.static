@@ -5,7 +5,7 @@ import: cabal.project
 
 -- Static linking flags for all local packages
 package tcg-platform-cert-util
-  ghc-options: -static -optl-static -optl-pthread
+  ghc-options: -static -optl-static -optl-pthread -optl-no-pie
 
 -- Package-specific flags
 package crypton
