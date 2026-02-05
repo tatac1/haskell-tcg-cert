@@ -61,6 +61,10 @@ Library
       Data.HardwareInfo.Linux.Nvme
       Data.HardwareInfo.Linux.Pci
       Data.HardwareInfo.Linux.Block
+      Data.HardwareInfo.Linux.Bluetooth
+      Data.HardwareInfo.Linux.Input
+      Data.HardwareInfo.Linux.Usb
+      Data.HardwareInfo.Linux.Firmware
     Build-depends:
       unix >= 2.7
       , process
@@ -87,7 +91,8 @@ Library
     Build-depends:
       process
 
-  GHC-Options:       -Wall
+  -- Use traditional CPP to avoid issues with /* in Haskell comments
+  GHC-Options:       -Wall -optP-traditional
 
 Test-Suite test-platform-hardware-info
   Default-Language:  Haskell2010

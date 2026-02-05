@@ -74,6 +74,27 @@ class Monad m => MonadHardware m where
   -- | Get USB controllers (via PCI)
   getUsbControllerInfo :: m (Either HardwareError [Component])
 
+  -- | Get input devices (keyboard, mouse, touchpad)
+  getInputDeviceInfo :: m (Either HardwareError [Component])
+
+  -- | Get USB devices (individual devices, not just controllers)
+  getUsbDeviceInfo :: m (Either HardwareError [Component])
+
+  -- | Get audio controllers (via PCI)
+  getAudioControllerInfo :: m (Either HardwareError [Component])
+
+  -- | Get optical drives (CD/DVD/Blu-Ray)
+  getOpticalDriveInfo :: m (Either HardwareError [Component])
+
+  -- | Get processing accelerators (AI/ML accelerators)
+  getAcceleratorInfo :: m (Either HardwareError [Component])
+
+  -- | Get encryption controllers (via PCI)
+  getEncryptionControllerInfo :: m (Either HardwareError [Component])
+
+  -- | Get firmware components (BIOS, bootloader, drive firmware)
+  getFirmwareInfo :: m (Either HardwareError [Component])
+
   -- | Get SMBIOS version
   getSmbiosVersion :: m (Either HardwareError SmbiosVersion)
 
@@ -119,5 +140,12 @@ collectComponents = do
     , fmap (either (const []) id) getGpuInfo
     , fmap (either (const []) id) getStorageControllerInfo
     , fmap (either (const []) id) getUsbControllerInfo
+    , fmap (either (const []) id) getInputDeviceInfo
+    , fmap (either (const []) id) getUsbDeviceInfo
+    , fmap (either (const []) id) getAudioControllerInfo
+    , fmap (either (const []) id) getOpticalDriveInfo
+    , fmap (either (const []) id) getAcceleratorInfo
+    , fmap (either (const []) id) getEncryptionControllerInfo
+    , fmap (either (const []) id) getFirmwareInfo
     ]
   return $ concat results

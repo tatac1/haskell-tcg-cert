@@ -94,6 +94,20 @@ instance MonadHardware DarwinHW where
 
   getUsbControllerInfo = DarwinHW $ return $ Right []
 
+  getInputDeviceInfo = DarwinHW $ return $ Right []
+
+  getUsbDeviceInfo = DarwinHW $ return $ Right []
+
+  getAudioControllerInfo = DarwinHW $ return $ Right []
+
+  getOpticalDriveInfo = DarwinHW $ return $ Right []
+
+  getAcceleratorInfo = DarwinHW $ return $ Right []
+
+  getEncryptionControllerInfo = DarwinHW $ return $ Right []
+
+  getFirmwareInfo = DarwinHW $ return $ Right []
+
   getSmbiosVersion = DarwinHW $ return $ Left $
     SmbiosNotAvailable "SMBIOS not directly accessible on macOS"
 

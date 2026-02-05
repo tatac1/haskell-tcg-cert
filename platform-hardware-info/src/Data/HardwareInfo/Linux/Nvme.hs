@@ -33,6 +33,8 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BL8
 
 import Data.HardwareInfo.Types
+import Data.HardwareInfo.Linux.Sysfs (getBlockDeviceBusPath)
+import System.Posix.Files (readSymbolicLink)
 
 -- | NVMe device information
 data NvmeDeviceInfo = NvmeDeviceInfo
@@ -43,6 +45,8 @@ data NvmeDeviceInfo = NvmeDeviceInfo
   , nvmeNamespaceId    :: !(Maybe Text)
   , nvmeEui64          :: !(Maybe Text)
   , nvmeNguid          :: !(Maybe Text)
+  , nvmePciAddress     :: !(Maybe Text)  -- ^ PCI address (e.g., "0000:03:00.0")
+  , nvmeBusPath        :: !(Maybe Text)  -- ^ Bus path (e.g., "pci-0000:03:00.0-nvme-1")
   } deriving (Show, Eq)
 
 -- | Get NVMe devices - tries nvme-cli first, falls back to sysfs
@@ -66,8 +70,19 @@ toComponent nvme = Component
   , componentSerial = Just $ nvmeSerialNumber nvme
   , componentRevision = Just $ nvmeFirmwareRev nvme
   , componentFieldReplaceable = Just True
-  , componentAddresses = []
+  , componentAddresses = buildAddresses nvme
   }
+  where
+    -- Build list of addresses from PCI and bus path
+    buildAddresses :: NvmeDeviceInfo -> [ComponentAddress]
+    buildAddresses n =
+      let pciAddr = case nvmePciAddress n of
+                      Just p -> [PCIAddress p]
+                      Nothing -> []
+          busAddr = case nvmeBusPath n of
+                      Just b -> [NVMeAddress b]
+                      Nothing -> []
+      in pciAddr ++ busAddr
 
 -- | Extract manufacturer from model number (heuristic)
 extractManufacturer :: Text -> Text
@@ -124,6 +139,8 @@ parseNvmeListJson (Object obj) =
         , nvmeNamespaceId = Nothing
         , nvmeEui64 = Nothing
         , nvmeNguid = Nothing
+        , nvmePciAddress = Nothing  -- Will be populated later
+        , nvmeBusPath = Nothing     -- Will be populated later
         }
 parseNvmeListJson _ = []
 
@@ -147,6 +164,13 @@ readNvmeController basePath controller = do
   serial <- readSysfsFile (ctrlPath </> "serial")
   firmware <- readSysfsFile (ctrlPath </> "firmware_rev")
 
+  -- Get PCI address by following the device symlink
+  pciAddr <- getNvmePciAddress ctrlPath
+
+  -- Get bus path from udev for the namespace device (e.g., nvme0n1)
+  let nsName = T.pack $ controller ++ "n1"
+  busPath <- getBlockDeviceBusPath nsName
+
   case (model, serial) of
     (Just m, Just s) -> return [NvmeDeviceInfo
       { nvmeDeviceName = T.pack controller
@@ -156,8 +180,39 @@ readNvmeController basePath controller = do
       , nvmeNamespaceId = Nothing
       , nvmeEui64 = Nothing
       , nvmeNguid = Nothing
+      , nvmePciAddress = pciAddr
+      , nvmeBusPath = busPath
       }]
     _ -> return []
+
+-- | Get PCI address for an NVMe controller
+getNvmePciAddress :: FilePath -> IO (Maybe Text)
+getNvmePciAddress ctrlPath = do
+  let deviceLink = ctrlPath </> "device"
+  exists <- doesFileExist deviceLink
+  if not exists
+    then return Nothing
+    else do
+      result <- try $ readSymbolicLink deviceLink
+      case result of
+        Left (_ :: SomeException) -> return Nothing
+        Right target -> do
+          -- Extract the PCI address from the symlink target
+          -- Target might be something like "../../../0000:03:00.0"
+          let pciAddr = T.pack $ takeFileName' target
+          -- Verify it looks like a PCI address (DDDD:BB:DD.F format)
+          if isPciAddress pciAddr
+            then return $ Just pciAddr
+            else return Nothing
+  where
+    takeFileName' = reverse . takeWhile (/= '/') . reverse
+
+    -- PCI address format: DDDD:BB:DD.F (minimum 12 characters)
+    isPciAddress addr =
+      T.length addr >= 12 &&
+      T.index addr 4 == ':' &&
+      T.index addr 7 == ':' &&
+      T.index addr 10 == '.'
 
 -- | Read a sysfs file safely
 readSysfsFile :: FilePath -> IO (Maybe Text)
@@ -189,6 +244,8 @@ data NvmeDeviceInfo = NvmeDeviceInfo
   , nvmeNamespaceId    :: !(Maybe Text)
   , nvmeEui64          :: !(Maybe Text)
   , nvmeNguid          :: !(Maybe Text)
+  , nvmePciAddress     :: !(Maybe Text)
+  , nvmeBusPath        :: !(Maybe Text)
   } deriving (Show, Eq)
 
 getNvmeDevices :: IO [Component]

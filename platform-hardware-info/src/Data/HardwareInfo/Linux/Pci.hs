@@ -21,6 +21,9 @@ module Data.HardwareInfo.Linux.Pci
   , getStorageControllers
   , getNetworkControllers
   , getUsbControllers
+  , getAudioControllers
+  , getAccelerators
+  , getEncryptionControllers
   ) where
 
 import Control.Exception (try, SomeException)
@@ -208,7 +211,7 @@ getGpuDevices = do
       , componentSerial = Nothing
       , componentRevision = pciRevision dev
       , componentFieldReplaceable = Just True
-      , componentAddresses = []
+      , componentAddresses = [PCIAddress (pciSlot dev)]
       }
 
 -- | Get storage controllers (SATA, SAS, RAID, etc.)
@@ -239,7 +242,7 @@ getStorageControllers = do
         , componentSerial = Nothing
         , componentRevision = pciRevision dev
         , componentFieldReplaceable = Just True
-        , componentAddresses = []
+        , componentAddresses = [PCIAddress (pciSlot dev)]
         }
 
 -- | Get network controllers
@@ -260,7 +263,7 @@ getNetworkControllers = do
       , componentSerial = Nothing
       , componentRevision = pciRevision dev
       , componentFieldReplaceable = Just True
-      , componentAddresses = []
+      , componentAddresses = [PCIAddress (pciSlot dev)]
       }
 
 -- | Get USB controllers
@@ -283,7 +286,91 @@ getUsbControllers = do
       , componentSerial = Nothing
       , componentRevision = pciRevision dev
       , componentFieldReplaceable = Just False
-      , componentAddresses = []
+      , componentAddresses = [PCIAddress (pciSlot dev)]
+      }
+
+-- | Get audio/multimedia controllers
+getAudioControllers :: IO [Component]
+getAudioControllers = do
+  devices <- getPciDevices
+  let audio = filter isAudio devices
+  return $ map audioToComponent audio
+  where
+    isAudio dev = getPciClass (pciClassCode dev) == PciClassMultimedia
+
+    audioToComponent dev =
+      let subclass = (pciClassCode dev) `mod` 0x100
+          -- Subclasses: 0x00=Video, 0x01=Audio, 0x02=Telephony, 0x03=HDAudio
+          cls = case subclass of
+                  0x01 -> ClassAudioController
+                  0x03 -> ClassAudioController  -- HD Audio
+                  _    -> ClassGeneralController
+      in Component
+        { componentClass = cls
+        , componentManufacturer = pciVendorName dev
+        , componentModel = T.pack $ "Audio Controller ["
+                            ++ formatHex (pciVendorId dev) ++ ":"
+                            ++ formatHex (pciDeviceId dev) ++ "]"
+        , componentSerial = Nothing
+        , componentRevision = pciRevision dev
+        , componentFieldReplaceable = Just False
+        , componentAddresses = [PCIAddress (pciSlot dev)]
+        }
+
+-- | Get processing accelerators (AI/ML accelerators, signal processors)
+--
+-- Note: TCG Component Class Registry v1.0 rev14 does not have a dedicated
+-- accelerator class. We use ClassDPU (0x00010007 - Data Processing Unit)
+-- as it's the closest match for processing accelerators in the TCG registry.
+-- DPUs are defined as programmable processors specialized for data processing,
+-- which encompasses AI/ML accelerators and signal processors.
+getAccelerators :: IO [Component]
+getAccelerators = do
+  devices <- getPciDevices
+  let accel = filter isAccelerator devices
+  return $ map accelToComponent accel
+  where
+    isAccelerator dev =
+      getPciClass (pciClassCode dev) == PciClassAccelerator ||
+      getPciClass (pciClassCode dev) == PciClassSignal
+
+    accelToComponent dev = Component
+      { componentClass = ClassDPU  -- DPU: closest TCG match for accelerators
+      , componentManufacturer = pciVendorName dev
+      , componentModel = T.pack $ "Processing Accelerator ["
+                          ++ formatHex (pciVendorId dev) ++ ":"
+                          ++ formatHex (pciDeviceId dev) ++ "]"
+      , componentSerial = Nothing
+      , componentRevision = pciRevision dev
+      , componentFieldReplaceable = Just True
+      , componentAddresses = [PCIAddress (pciSlot dev)]
+      }
+
+-- | Get encryption controllers
+--
+-- Note: TCG Component Class Registry v1.0 rev14 does not define a specific
+-- encryption controller class. We use ClassGeneralController (0x00050000)
+-- as PCI class 0x10 (Encryption) devices are controller-type components.
+-- These include hardware crypto accelerators, security processors, and
+-- encrypted storage controllers (distinct from TPM which has its own class).
+getEncryptionControllers :: IO [Component]
+getEncryptionControllers = do
+  devices <- getPciDevices
+  let crypto = filter isEncryption devices
+  return $ map cryptoToComponent crypto
+  where
+    isEncryption dev = getPciClass (pciClassCode dev) == PciClassEncryption
+
+    cryptoToComponent dev = Component
+      { componentClass = ClassGeneralController  -- No specific TCG class for crypto
+      , componentManufacturer = pciVendorName dev
+      , componentModel = T.pack $ "Encryption Controller ["
+                          ++ formatHex (pciVendorId dev) ++ ":"
+                          ++ formatHex (pciDeviceId dev) ++ "]"
+      , componentSerial = Nothing
+      , componentRevision = pciRevision dev
+      , componentFieldReplaceable = Just False
+      , componentAddresses = [PCIAddress (pciSlot dev)]
       }
 
 -- | Lookup vendor name from vendor ID
@@ -321,6 +408,9 @@ module Data.HardwareInfo.Linux.Pci
   , getStorageControllers
   , getNetworkControllers
   , getUsbControllers
+  , getAudioControllers
+  , getAccelerators
+  , getEncryptionControllers
   , PciDevice(..)
   , PciClass(..)
   ) where
@@ -356,4 +446,13 @@ getNetworkControllers = return []
 
 getUsbControllers :: IO [Component]
 getUsbControllers = return []
+
+getAudioControllers :: IO [Component]
+getAudioControllers = return []
+
+getAccelerators :: IO [Component]
+getAccelerators = return []
+
+getEncryptionControllers :: IO [Component]
+getEncryptionControllers = return []
 #endif

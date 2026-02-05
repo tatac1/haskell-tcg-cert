@@ -32,9 +32,19 @@ import Data.HardwareInfo.Class
 import Data.HardwareInfo.Smbios.Parser
 import Data.HardwareInfo.Smbios.Types
 import Data.HardwareInfo.Linux.Sysfs
+  ( readDmiId, readSmbiosEntryPoint, readSmbiosTable
+  , getNetworkInterfacePciAddress, getNetworkInterfaceVendorDevice
+  , getNetworkInterfaceDriver, lookupVendorName
+  , getNetworkInterfaceFirmware, getNetworkInterfacePermaddr
+  , isWirelessInterface, isCellularInterface, getCellularModemInfo
+  )
 import Data.HardwareInfo.Linux.Nvme (getNvmeDevices)
-import Data.HardwareInfo.Linux.Pci (getGpuDevices, getStorageControllers, getUsbControllers)
-import Data.HardwareInfo.Linux.Block (getAllStorageDevices)
+import Data.HardwareInfo.Linux.Pci (getGpuDevices, getStorageControllers, getUsbControllers, getAudioControllers, getAccelerators, getEncryptionControllers)
+import Data.HardwareInfo.Linux.Block (getAllStorageDevices, getOpticalDrives)
+import Data.HardwareInfo.Linux.Bluetooth (getBluetoothDevices)
+import Data.HardwareInfo.Linux.Input (getInputDevices)
+import Data.HardwareInfo.Linux.Usb (getUsbDevices)
+import Data.HardwareInfo.Linux.Firmware (getFirmwareComponents)
 
 -- | Linux hardware collection monad
 newtype LinuxHW a = LinuxHW { unLinuxHW :: IO a }
@@ -89,8 +99,11 @@ instance MonadHardware LinuxHW where
         return $ Right $ extractMemoryDevices table
 
   getNetworkInfo = LinuxHW $ do
+    -- Get NICs (Ethernet and WiFi)
     nics <- getLinuxNetworkInterfaces
-    return $ Right nics
+    -- Get Bluetooth adapters
+    btDevices <- getBluetoothDevices
+    return $ Right $ nics ++ btDevices
 
   getStorageInfo = LinuxHW $ do
     -- Get NVMe devices
@@ -145,6 +158,34 @@ instance MonadHardware LinuxHW where
   getUsbControllerInfo = LinuxHW $ do
     controllers <- getUsbControllers
     return $ Right controllers
+
+  getInputDeviceInfo = LinuxHW $ do
+    devices <- getInputDevices
+    return $ Right devices
+
+  getUsbDeviceInfo = LinuxHW $ do
+    devices <- getUsbDevices
+    return $ Right devices
+
+  getAudioControllerInfo = LinuxHW $ do
+    controllers <- getAudioControllers
+    return $ Right controllers
+
+  getOpticalDriveInfo = LinuxHW $ do
+    drives <- getOpticalDrives
+    return $ Right drives
+
+  getAcceleratorInfo = LinuxHW $ do
+    accelerators <- getAccelerators
+    return $ Right accelerators
+
+  getEncryptionControllerInfo = LinuxHW $ do
+    controllers <- getEncryptionControllers
+    return $ Right controllers
+
+  getFirmwareInfo = LinuxHW $ do
+    firmware <- getFirmwareComponents
+    return $ Right firmware
 
   getSmbiosVersion = LinuxHW $ do
     epResult <- readSmbiosEntryPoint
@@ -222,24 +263,89 @@ getSmbiosTableParsed = do
     chunksOf n xs = take n xs : chunksOf n (drop n xs)
 
 -- | Get network interfaces using network-info package
+-- Collects MAC addresses, PCI addresses, manufacturer, and model where available
 getLinuxNetworkInterfaces :: IO [Component]
 getLinuxNetworkInterfaces = do
   ifaces <- getNetworkInterfaces
-  return $ map toComponent $ filter isPhysical ifaces
+  mapM toComponent $ filter isPhysical ifaces
   where
     isPhysical iface =
       let n = name iface
       in n /= "lo" && not ("veth" `T.isPrefixOf` T.pack n)
 
-    toComponent iface = Component
-      { componentClass = ClassNIC
-      , componentManufacturer = ""  -- Not available from network-info
-      , componentModel = T.pack $ name iface
-      , componentSerial = Nothing
-      , componentRevision = Nothing
-      , componentFieldReplaceable = Just True
-      , componentAddresses = [EthernetMAC $ formatMAC $ mac iface]
-      }
+    toComponent iface = do
+      let ifaceName = T.pack $ name iface
+      -- Check if this is a wireless (WiFi) interface
+      isWifi <- isWirelessInterface ifaceName
+      -- Check if this is a cellular (WWAN) interface
+      isCellular <- isCellularInterface ifaceName
+      -- Get cellular modem info if applicable
+      (cellularMfr, cellularModel, cellularTech) <- if isCellular
+        then getCellularModemInfo ifaceName
+        else return (Nothing, Nothing, Nothing)
+      -- Get PCI address for this interface
+      pciAddr <- getNetworkInterfacePciAddress ifaceName
+      -- Get PCI vendor/device IDs for manufacturer/model
+      vendorDevice <- getNetworkInterfaceVendorDevice ifaceName
+      -- Get driver name as fallback model info
+      driverName <- getNetworkInterfaceDriver ifaceName
+      -- Get firmware version from ethtool
+      firmwareVer <- getNetworkInterfaceFirmware ifaceName
+      -- Get permanent MAC address (can serve as serial identifier)
+      permAddr <- getNetworkInterfacePermaddr ifaceName
+
+      -- Use appropriate MAC address type based on interface type
+      let macAddrValue = formatMAC $ mac iface
+      let macAddr = if isWifi
+                      then WirelessMAC macAddrValue
+                      else EthernetMAC macAddrValue
+      let addresses = case pciAddr of
+            Just addr -> [macAddr, PCIAddress addr]
+            Nothing   -> [macAddr]
+
+      -- Determine manufacturer from vendor ID or cellular info
+      let manufacturer = case (cellularMfr, vendorDevice) of
+            (Just mfr, _) -> mfr
+            (Nothing, Just (vendorId, _)) ->
+              let vendorName = lookupVendorName vendorId
+              in if T.null vendorName
+                   then vendorId  -- Use raw ID if no mapping
+                   else vendorName
+            (Nothing, Nothing) -> ""
+
+      -- Determine model: prefer cellular model, device ID info, fallback to driver + interface name
+      let model = case (cellularModel, vendorDevice, driverName) of
+            (Just cm, _, _) ->
+              cm <> " (" <> ifaceName <> ")"
+            (Nothing, Just (_, deviceId), Just drv) ->
+              -- Format: "driver (interface)" with device ID available
+              drv <> " " <> deviceId <> " (" <> ifaceName <> ")"
+            (Nothing, Just (_, deviceId), Nothing) ->
+              deviceId <> " (" <> ifaceName <> ")"
+            (Nothing, Nothing, Just drv) ->
+              drv <> " (" <> ifaceName <> ")"
+            (Nothing, Nothing, Nothing) ->
+              ifaceName
+
+      -- Use appropriate component class based on interface type
+      let compClass
+            | isCellular = case cellularTech of
+                Just "5G" -> Class5GCellular
+                Just "4G" -> Class4GCellular
+                Just "3G" -> Class3GCellular
+                _         -> Class4GCellular  -- Default to 4G for unknown modems
+            | isWifi = ClassWiFiAdapter
+            | otherwise = ClassEthernetAdapter
+
+      return Component
+        { componentClass = compClass
+        , componentManufacturer = manufacturer
+        , componentModel = model
+        , componentSerial = permAddr  -- Permanent MAC as serial identifier
+        , componentRevision = firmwareVer  -- Firmware version as revision
+        , componentFieldReplaceable = Just True
+        , componentAddresses = addresses
+        }
 
     formatMAC (MAC a b c d e f) =
       T.pack $ printf "%02X:%02X:%02X:%02X:%02X:%02X" a b c d e f

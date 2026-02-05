@@ -144,6 +144,20 @@ instance MonadHardware WindowsHW where
     controllers <- SetupApi.getUsbControllers
     return $ Right controllers
 
+  getInputDeviceInfo = WindowsHW $ return $ Right []
+
+  getUsbDeviceInfo = WindowsHW $ return $ Right []
+
+  getAudioControllerInfo = WindowsHW $ return $ Right []
+
+  getOpticalDriveInfo = WindowsHW $ return $ Right []
+
+  getAcceleratorInfo = WindowsHW $ return $ Right []
+
+  getEncryptionControllerInfo = WindowsHW $ return $ Right []
+
+  getFirmwareInfo = WindowsHW $ return $ Right []
+
   getSmbiosVersion = WindowsHW $ do
     result <- getRawSmbiosData
     case result of

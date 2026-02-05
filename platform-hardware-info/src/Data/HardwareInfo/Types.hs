@@ -556,7 +556,8 @@ componentClassFromTcgValue v = case v of
 tcgComponentClassRegistry :: Text
 tcgComponentClassRegistry = "2.23.133.18.3.1"
 
--- | Component network addresses
+-- | Component addresses for TCG Platform Certificate
+-- Aligned with TCG Component Class Registry address types
 data ComponentAddress
   = EthernetMAC !Text
     -- ^ Ethernet MAC address (e.g., "AA:BB:CC:DD:EE:FF")
@@ -564,6 +565,18 @@ data ComponentAddress
     -- ^ Wireless LAN MAC address
   | BluetoothMAC !Text
     -- ^ Bluetooth MAC address
+  | PCIAddress !Text
+    -- ^ PCI bus address (e.g., "0000:00:1f.6" - domain:bus:device.function)
+  | USBAddress !Text
+    -- ^ USB device address (e.g., "1-2.3:1.0" - bus-port.port:config.interface)
+  | SATAAddress !Text
+    -- ^ SATA/SAS bus path (e.g., "pci-0000:00:1f.2-ata-1")
+  | WWNAddress !Text
+    -- ^ World Wide Name for storage devices (e.g., "0x5000c5000000001")
+  | NVMeAddress !Text
+    -- ^ NVMe device address (e.g., "pci-0000:03:00.0-nvme-1")
+  | LogicalAddress !Text
+    -- ^ Logical/software-defined address
   deriving (Show, Eq, Generic)
 
 -- | SMBIOS version information
