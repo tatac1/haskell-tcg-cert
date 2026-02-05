@@ -11,20 +11,25 @@ FROM alpine:3.20 AS builder
 
 # Install build dependencies
 # Alpine 3.20 provides GHC 9.8.2 and Cabal 3.10.3.0
+# ghc-dev provides static GHC runtime libraries
 RUN apk add --no-cache \
     ghc \
+    ghc-dev \
     cabal \
     musl-dev \
     zlib-dev \
     zlib-static \
     gmp-dev \
+    gmp-static \
     libffi-dev \
+    libffi-static \
     ncurses-dev \
     ncurses-static \
     git \
     curl \
     bash \
-    coreutils
+    coreutils \
+    gcc
 
 WORKDIR /build
 
