@@ -40,6 +40,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-test-cabal-
 
+      - name: Install Z3 SMT solver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y z3
+
       - name: Update Cabal
         run: cabal update
 
