@@ -30,7 +30,8 @@ import Data.Word (Word8, Word32)
 --   PVOID pFirmwareTableBuffer,
 --   DWORD BufferSize
 -- );
-foreign import stdcall "GetSystemFirmwareTable"
+-- Note: On x64 Windows, stdcall is not supported; use ccall instead
+foreign import ccall "GetSystemFirmwareTable"
   c_GetSystemFirmwareTable :: CUInt -> CUInt -> Ptr () -> CUInt -> IO CUInt
 
 -- | 'RSMB' signature for SMBIOS (Raw SMBIOS)

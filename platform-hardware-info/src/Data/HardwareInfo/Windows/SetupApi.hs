@@ -119,20 +119,22 @@ iNVALID_HANDLE_VALUE_SETUP = castPtr (nullPtr `plusPtrHack` (-1))
     plusPtrHack p n = castPtr (castPtr p `plusPtr` n)
 
 -- | FFI imports for SetupAPI
-foreign import stdcall "setupapi.h SetupDiGetClassDevsW"
+-- Note: On x64 Windows, stdcall is not supported; use ccall instead
+-- The WINDOWS_CCONV macro from Win32 handles this automatically
+foreign import ccall "setupapi.h SetupDiGetClassDevsW"
   c_SetupDiGetClassDevsW :: Ptr GUID -> LPCTSTR -> HANDLE
                          -> DWORD -> IO HANDLE
 
-foreign import stdcall "setupapi.h SetupDiEnumDeviceInfo"
+foreign import ccall "setupapi.h SetupDiEnumDeviceInfo"
   c_SetupDiEnumDeviceInfo :: HANDLE -> DWORD -> Ptr Word8
                           -> IO BOOL
 
-foreign import stdcall "setupapi.h SetupDiGetDeviceRegistryPropertyW"
+foreign import ccall "setupapi.h SetupDiGetDeviceRegistryPropertyW"
   c_SetupDiGetDeviceRegistryPropertyW :: HANDLE -> Ptr Word8 -> DWORD
                                       -> Ptr DWORD -> Ptr Word8 -> DWORD
                                       -> Ptr DWORD -> IO BOOL
 
-foreign import stdcall "setupapi.h SetupDiDestroyDeviceInfoList"
+foreign import ccall "setupapi.h SetupDiDestroyDeviceInfoList"
   c_SetupDiDestroyDeviceInfoList :: HANDLE -> IO BOOL
 
 -- | Write GUID to memory
@@ -208,7 +210,7 @@ enumerateDevices hDevInfo = allocaBytes spDevinfoDataSize $ \devInfoData -> do
     go index devInfoData acc = do
       initSpDevinfoData devInfoData
       success <- c_SetupDiEnumDeviceInfo hDevInfo index devInfoData
-      if success == 0
+      if not success
         then return (reverse acc)
         else do
           mDevice <- getDeviceInfo hDevInfo devInfoData
@@ -258,7 +260,7 @@ getDeviceProperty hDevInfo devInfoData propertyId = do
                    (fromIntegral bufSize)
                    requiredSizePtr
 
-      if success == 0
+      if not success
         then return ""
         else do
           -- Read as wide string (UTF-16LE)
@@ -278,9 +280,12 @@ getDeviceProperty hDevInfo devInfoData propertyId = do
 -- | Decode UTF-16LE ByteString to Text (simplified)
 decodeUtf16LE :: BS.ByteString -> Text
 decodeUtf16LE bs =
-  case TE.decodeUtf16LE' (trimNulls bs) of
-    Right t -> T.strip t
-    Left _ -> ""
+  -- Use decodeUtf16LE directly; it may throw on invalid input but Windows
+  -- registry strings should always be valid UTF-16LE
+  let trimmed = trimNulls bs
+  in if BS.null trimmed
+       then ""
+       else T.strip $ TE.decodeUtf16LE trimmed
   where
     -- Trim trailing nulls
     trimNulls b =

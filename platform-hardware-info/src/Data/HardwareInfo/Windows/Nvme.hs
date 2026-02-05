@@ -103,11 +103,12 @@ storageDeviceDescriptorSize :: Int
 storageDeviceDescriptorSize = 1024
 
 -- | FFI imports
-foreign import stdcall "windows.h CreateFileW"
+-- Note: On x64 Windows, stdcall is not supported; use ccall instead
+foreign import ccall "windows.h CreateFileW"
   c_CreateFileW :: Ptr CUInt -> DWORD -> DWORD -> Ptr ()
                 -> DWORD -> DWORD -> HANDLE -> IO HANDLE
 
-foreign import stdcall "windows.h DeviceIoControl"
+foreign import ccall "windows.h DeviceIoControl"
   c_DeviceIoControl :: HANDLE -> DWORD -> Ptr a -> DWORD
                     -> Ptr b -> DWORD -> LPDWORD -> Ptr () -> IO BOOL
 
@@ -290,7 +291,7 @@ queryStorageProperty driveNum = do
             bytesReturnedPtr
             nullPtr
 
-          if success == 0
+          if not success
             then return $ Left "DeviceIoControl failed"
             else parseStorageDeviceDescriptor driveNum outPtr
 
