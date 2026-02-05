@@ -14,8 +14,53 @@ on:
         type: string
 
 jobs:
+  # Run tests before building
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6'
+          cabal-version: '3.10'
+
+      - name: Cache Cabal
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cabal/packages
+            ~/.cabal/store
+            dist-newstyle
+          key: ${{ runner.os }}-test-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
+          restore-keys: |
+            ${{ runner.os }}-test-cabal-
+
+      - name: Update Cabal
+        run: cabal update
+
+      - name: Build all packages
+        run: cabal build all
+
+      - name: Run tests for tcg-platform-cert
+        run: cabal test tcg-platform-cert --test-show-details=direct
+
+      - name: Run tests for tcg-platform-cert-validation
+        run: cabal test tcg-platform-cert-validation --test-show-details=direct
+
+      - name: Run tests for tcg-platform-cert-util
+        run: cabal test tcg-platform-cert-util --test-show-details=direct
+
+      - name: Run tests for platform-hardware-info
+        run: cabal test platform-hardware-info --test-show-details=direct
+
   # Linux static builds using Podman + Alpine musl
   build-linux:
+    needs: test
     name: Linux ${{ matrix.arch }}
     runs-on: ubuntu-latest
     strategy:
@@ -60,6 +105,7 @@ jobs:
 
   # macOS builds for Intel and Apple Silicon
   build-macos:
+    needs: test
     name: macOS ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -129,6 +175,7 @@ jobs:
 
   # Windows build
   build-windows:
+    needs: test
     name: Windows x86_64
     runs-on: windows-latest
 
