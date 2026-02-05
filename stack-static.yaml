@@ -1,0 +1,36 @@
+# Static build configuration for Linux (Alpine musl)
+# Usage: stack --stack-yaml stack-static.yaml build
+
+resolver: lts-21.25  # GHC 9.4.8 (compatible with Alpine 3.19's GHC 9.4.7)
+
+packages:
+  - platform-hardware-info
+  - tcg-platform-cert
+  - tcg-platform-cert-validation
+  - tcg-platform-cert-util
+
+extra-deps:
+  - git: https://github.com/tatac1/crypton-certificate.git
+    commit: 70a49299d4225349697bab67b979f6a5cea79d11
+    subdirs:
+      - crypton-x509
+      - crypton-x509-store
+      - crypton-x509-validation
+      - crypton-x509-system
+      - x509-ac-validation
+
+# Use Alpine's system GHC
+system-ghc: true
+install-ghc: false
+
+# Static linking flags
+ghc-options:
+  tcg-platform-cert-util: -static -optl-static -optl-pthread -fPIC
+  "$locals": -optc-Wno-error -optc-Wno-nullability-completeness -optc-Wno-expansion-to-defined
+
+extra-lib-dirs:
+  - /usr/lib
+
+flags:
+  crypton:
+    use_target_attributes: false

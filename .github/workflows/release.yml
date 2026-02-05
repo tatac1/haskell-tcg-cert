@@ -1,0 +1,252 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  # Linux static builds using Podman + Alpine musl
+  build-linux:
+    name: Linux ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build static binary
+        run: |
+          chmod +x ./scripts/build-static.sh
+          ./scripts/build-static.sh ${{ matrix.arch }} ${{ steps.version.outputs.version }}
+
+      - name: Verify binary
+        run: |
+          file dist/tcg-platform-cert-util-*
+          ls -lh dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/tcg-platform-cert-util-*
+          retention-days: 7
+
+  # macOS builds for Intel and Apple Silicon
+  build-macos:
+    name: macOS ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13      # Intel (x86_64)
+            arch: x86_64
+          - os: macos-14      # Apple Silicon (arm64)
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6'
+          cabal-version: '3.10'
+
+      - name: Cache Cabal
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cabal/packages
+            ~/.cabal/store
+            dist-newstyle
+          key: ${{ runner.os }}-${{ matrix.arch }}-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-cabal-
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update Cabal
+        run: cabal update
+
+      - name: Build
+        run: cabal build tcg-platform-cert-util
+
+      - name: Copy binary
+        run: |
+          mkdir -p dist
+          BINARY=$(cabal list-bin tcg-platform-cert-util 2>/dev/null | grep -v "^Up to date" | tail -1)
+          cp "$BINARY" "dist/tcg-platform-cert-util-${{ steps.version.outputs.version }}-macos-${{ matrix.arch }}"
+          chmod +x "dist/tcg-platform-cert-util-${{ steps.version.outputs.version }}-macos-${{ matrix.arch }}"
+
+      - name: Verify binary
+        run: |
+          file dist/tcg-platform-cert-util-*
+          otool -L dist/tcg-platform-cert-util-*
+          ls -lh dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/tcg-platform-cert-util-*
+          retention-days: 7
+
+  # Create macOS Universal Binary
+  build-macos-universal:
+    name: macOS Universal
+    needs: build-macos
+    runs-on: macos-14
+
+    steps:
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macos-*
+          path: binaries
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Universal Binary
+        run: |
+          mkdir -p dist
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Find the binaries
+          X86_BINARY=$(find binaries -name "*-macos-x86_64" | head -1)
+          ARM_BINARY=$(find binaries -name "*-macos-arm64" | head -1)
+
+          echo "x86_64 binary: $X86_BINARY"
+          echo "arm64 binary: $ARM_BINARY"
+
+          # Create Universal Binary
+          lipo -create "$X86_BINARY" "$ARM_BINARY" \
+            -output "dist/tcg-platform-cert-util-${VERSION}-macos-universal"
+
+          chmod +x "dist/tcg-platform-cert-util-${VERSION}-macos-universal"
+
+      - name: Verify Universal Binary
+        run: |
+          file dist/tcg-platform-cert-util-*
+          lipo -info dist/tcg-platform-cert-util-*
+          ls -lh dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: dist/tcg-platform-cert-util-*
+          retention-days: 7
+
+  # Create GitHub Release with all binaries
+  release:
+    name: Create Release
+    needs: [build-linux, build-macos-universal]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: |
+          find artifacts -type f -ls
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -type f -name "tcg-platform-cert-util-*" -exec cp {} release/ \;
+          ls -lh release/
+
+      - name: Create checksums
+        run: |
+          cd release
+          sha256sum tcg-platform-cert-util-* > checksums-sha256.txt
+          cat checksums-sha256.txt
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            release/tcg-platform-cert-util-*
+            release/checksums-sha256.txt
+          body: |
+            ## Downloads
+
+            | Platform | Architecture | File |
+            |----------|--------------|------|
+            | Linux | x86_64 | `tcg-platform-cert-util-${{ steps.version.outputs.version }}-linux-x86_64` |
+            | Linux | aarch64 | `tcg-platform-cert-util-${{ steps.version.outputs.version }}-linux-aarch64` |
+            | macOS | Universal | `tcg-platform-cert-util-${{ steps.version.outputs.version }}-macos-universal` |
+            | macOS | Intel | `tcg-platform-cert-util-${{ steps.version.outputs.version }}-macos-x86_64` |
+            | macOS | Apple Silicon | `tcg-platform-cert-util-${{ steps.version.outputs.version }}-macos-arm64` |
+
+            ### Linux binaries
+            Statically linked with musl libc. Works on any Linux distribution.
+
+            ### macOS binaries
+            - **Universal**: Works on both Intel and Apple Silicon Macs
+            - Architecture-specific binaries also available
+
+            ### Verification
+            ```bash
+            sha256sum -c checksums-sha256.txt
+            ```
