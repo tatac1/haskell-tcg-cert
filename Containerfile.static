@@ -1,5 +1,5 @@
 # Multi-stage build for static Linux binary
-# Uses ghcup to install GHC with static libraries
+# Uses utdemir/ghc-musl which provides GHC built for musl static linking
 #
 # Usage:
 #   podman build --platform=linux/amd64 -f Containerfile.static .
@@ -7,40 +7,8 @@
 # =============================================================================
 # Stage 1: Build environment
 # =============================================================================
-FROM alpine:3.20 AS builder
-
-# Install build dependencies
-RUN apk add --no-cache \
-    curl \
-    gcc \
-    g++ \
-    make \
-    musl-dev \
-    zlib-dev \
-    zlib-static \
-    gmp-dev \
-    libffi-dev \
-    ncurses-dev \
-    ncurses-static \
-    git \
-    bash \
-    coreutils \
-    xz \
-    binutils-gold \
-    perl \
-    llvm18
-
-# Install ghcup
-ENV GHCUP_INSTALL_BASE_PREFIX=/usr/local
-ENV PATH="/usr/local/.ghcup/bin:$PATH"
-RUN curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | \
-    BOOTSTRAP_HASKELL_NONINTERACTIVE=1 \
-    BOOTSTRAP_HASKELL_MINIMAL=1 \
-    sh
-
-# Install GHC 9.6.6 (known to work well with static linking on Alpine)
-RUN ghcup install ghc 9.6.6 --set
-RUN ghcup install cabal 3.10.3.0 --set
+# Use pre-built GHC with musl support for true static linking
+FROM utdemir/ghc-musl:v27-ghc964 AS builder
 
 WORKDIR /build
 
