@@ -1,5 +1,5 @@
 # Multi-stage build for static Linux binary
-# Based on Pandoc's approach using Alpine Linux with musl libc
+# Uses ghcup to install GHC with static libraries
 #
 # Usage:
 #   podman build --platform=linux/amd64 -f Containerfile.static .
@@ -10,12 +10,11 @@
 FROM alpine:3.20 AS builder
 
 # Install build dependencies
-# Alpine 3.20 provides GHC 9.8.2 and Cabal 3.10.3.0
-# ghc-dev provides static GHC runtime libraries
 RUN apk add --no-cache \
-    ghc \
-    ghc-dev \
-    cabal \
+    curl \
+    gcc \
+    g++ \
+    make \
     musl-dev \
     zlib-dev \
     zlib-static \
@@ -24,10 +23,24 @@ RUN apk add --no-cache \
     ncurses-dev \
     ncurses-static \
     git \
-    curl \
     bash \
     coreutils \
-    gcc
+    xz \
+    binutils-gold \
+    perl \
+    llvm18
+
+# Install ghcup
+ENV GHCUP_INSTALL_BASE_PREFIX=/usr/local
+ENV PATH="/usr/local/.ghcup/bin:$PATH"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | \
+    BOOTSTRAP_HASKELL_NONINTERACTIVE=1 \
+    BOOTSTRAP_HASKELL_MINIMAL=1 \
+    sh
+
+# Install GHC 9.6.6 (known to work well with static linking on Alpine)
+RUN ghcup install ghc 9.6.6 --set
+RUN ghcup install cabal 3.10.3.0 --set
 
 WORKDIR /build
 
