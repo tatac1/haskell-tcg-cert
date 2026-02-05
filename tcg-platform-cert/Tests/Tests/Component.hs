@@ -30,25 +30,12 @@ tests = testGroup "Component Tests"
         let comp = ComponentIdentifierV2 (B.pack "TestMfg") (B.pack "TestModel") Nothing Nothing Nothing Nothing ComponentCPU Nothing
         isComponentClass ComponentCPU comp @?= True
         isComponentClass ComponentMemory comp @?= False
-    , testCase "ComponentClass enumeration values" $ do
-        -- Test basic component class enumeration  
-        let cpu = ComponentCPU
-            memory = ComponentMemory
-            motherboard = ComponentMotherboard
-        -- Just test that the constructors work
-        cpu @?= ComponentCPU
-        memory @?= ComponentMemory
-        motherboard @?= ComponentMotherboard
     ]
   , testGroup "ComponentAddress"
     [ testCase "ComponentAddress creation" $ do
         let addr = ComponentAddress AddressPCI (B.pack "0000:00:1f.3")
         caAddressType addr @?= AddressPCI
         caAddress addr @?= B.pack "0000:00:1f.3"
-    , testCase "ComponentAddressType enumeration" $ do
-        let types = [AddressPCI, AddressUSB, AddressSATA, AddressI2C]
-        -- Test that these constructors work
-        length types @?= 4
     ]
   , testGroup "ComponentHierarchy"
     [ testCase "Component hierarchy validation" $ do

@@ -11,7 +11,7 @@ import Control.Monad (when)
 import Data.Maybe (isNothing)
 import Data.Hourglass (Date (..), DateTime (..), Month (..), TimeOfDay (..))
 import Data.X509 (Certificate (..), DistinguishedName (..), Extensions (..), HashALG (..), PubKey (..), PubKeyALG (..), SignatureALG (..))
-import Data.X509.AttCert (AttCertIssuer (..), AttCertValidityPeriod (..), Holder (..), pattern HolderEntityName)
+import Data.X509.AttCert (AttCertIssuer (..), AttCertValidityPeriod (..), pattern HolderEntityName)
 import Data.X509.Attribute (Attributes (..))
 import qualified Data.X509.TCG as TCG
 import Data.X509.TCG.Component
@@ -62,11 +62,7 @@ tests =
     "Operations Tests"
     [ testGroup
         "Configuration Management"
-        [ testCase "getCurrentPlatformConfiguration function type exists" $ do
-            -- Test that the function exists and has the correct type
-            -- by testing with a minimal case that should return Nothing
-            True @?= True, -- Function exists and imports correctly
-          testCase "getCurrentPlatformConfiguration extracts config from Platform Certificate" $ do
+        [ testCase "getCurrentPlatformConfiguration extracts config from Platform Certificate" $ do
             -- Create test EK certificate
             ekCert <- createTestEKCert
 
@@ -702,8 +698,95 @@ tests =
                 -- Verify signature algorithm is what we specified
                 dpciSignature deltaInfo @?= sigAlg
         ]
+    , decodeLimitTests
     , validationTests
     ]
+
+-- | Tests for decode size limits
+decodeLimitTests :: TestTree
+decodeLimitTests = testGroup "Decode Size Limit Tests"
+  [ testCase "decodeSignedPlatformCertificateWithLimit accepts exact length" $ do
+      ekCert <- createTestEKCert
+      let config =
+            PlatformConfiguration
+              (B.pack "Limit Corp")
+              (B.pack "Limit Model")
+              (B.pack "1.0")
+              (B.pack "LIM123")
+              []
+          components = []
+          tpmInfo =
+            TPMInfo
+              (B.pack "TPM 2.0")
+              (TPMVersion 2 0 1 0)
+              (TPMSpecification (B.pack "2.0") 116 1)
+
+      result <- TCG.createPlatformCertificate config components tpmInfo ekCert "sha384"
+      case result of
+        Left err -> assertFailure $ "Failed to create platform certificate: " ++ err
+        Right cert -> do
+          let der = encodeSignedPlatformCertificate cert
+              limit = B.length der
+          case decodeSignedPlatformCertificateWithLimit limit der of
+            Left err -> assertFailure $ "Expected decode success, got error: " ++ err
+            Right _ -> return ()
+
+  , testCase "decodeSignedPlatformCertificateWithLimit rejects too small limit" $ do
+      ekCert <- createTestEKCert
+      let config =
+            PlatformConfiguration
+              (B.pack "Limit Corp")
+              (B.pack "Limit Model")
+              (B.pack "1.0")
+              (B.pack "LIM123")
+              []
+          components = []
+          tpmInfo =
+            TPMInfo
+              (B.pack "TPM 2.0")
+              (TPMVersion 2 0 1 0)
+              (TPMSpecification (B.pack "2.0") 116 1)
+
+      result <- TCG.createPlatformCertificate config components tpmInfo ekCert "sha384"
+      case result of
+        Left err -> assertFailure $ "Failed to create platform certificate: " ++ err
+        Right cert -> do
+          let der = encodeSignedPlatformCertificate cert
+              limit = max 0 (B.length der - 1)
+          case decodeSignedPlatformCertificateWithLimit limit der of
+            Left _ -> return ()
+            Right _ -> assertFailure "Expected decode failure due to size limit"
+
+  , testCase "decodeSignedDeltaPlatformCertificateWithLimit rejects too small limit" $ do
+      ekCert <- createTestEKCert
+      let config =
+            PlatformConfiguration
+              (B.pack "Delta Corp")
+              (B.pack "Delta Model")
+              (B.pack "1.0")
+              (B.pack "DELTA123")
+              []
+          components = []
+          tpmInfo =
+            TPMInfo
+              (B.pack "TPM 2.0")
+              (TPMVersion 2 0 1 0)
+              (TPMSpecification (B.pack "2.0") 116 1)
+
+      baseResult <- TCG.createPlatformCertificate config components tpmInfo ekCert "sha384"
+      case baseResult of
+        Left err -> assertFailure $ "Failed to create base certificate: " ++ err
+        Right baseCert -> do
+          deltaResult <- TCG.createDeltaPlatformCertificate baseCert [] []
+          case deltaResult of
+            Left err -> assertFailure $ "Failed to create delta certificate: " ++ err
+            Right deltaCert -> do
+              let der = encodeSignedDeltaPlatformCertificate deltaCert
+                  limit = max 0 (B.length der - 1)
+              case decodeSignedDeltaPlatformCertificateWithLimit limit der of
+                Left _ -> return ()
+                Right _ -> assertFailure "Expected delta decode failure due to size limit"
+  ]
 
 -- | Comprehensive tests for validation functions
 validationTests :: TestTree

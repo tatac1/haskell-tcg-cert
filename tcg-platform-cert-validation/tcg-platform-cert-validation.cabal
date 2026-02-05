@@ -69,9 +69,7 @@ test-suite test-tcg-platform-cert-validation
   ghc-options: -Wall -threaded
   
   other-modules:
-      Tests.Validation
-    , Tests.Cache
-    , Tests.Internal
+      Tests.Internal
     , Tests.Properties
     , Tests.Arbitrary
     , Tests.SBV

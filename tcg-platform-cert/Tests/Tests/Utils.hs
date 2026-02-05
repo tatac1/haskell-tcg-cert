@@ -54,12 +54,6 @@ tests = testGroup "Utils Tests"
         let tcgError = NotImplemented "test feature"
             errorStr = formatError tcgError
         errorStr @?= "Not implemented: test feature"
-    , testCase "TCGError Show instance works" $ do
-        let parseError = ParseError "invalid format"
-            notImplError = NotImplemented "feature X"
-        -- Test that show instances work without crashing
-        show parseError `seq` True @?= True
-        show notImplError `seq` True @?= True
     ]
   , testGroup "Component Tree Utilities"
     [ testCase "ComponentTreeUtils creation with components" $ do

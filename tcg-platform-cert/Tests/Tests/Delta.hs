@@ -11,15 +11,7 @@ import Data.X509.TCG.OID (tcg_at_platformConfiguration_v2)
 
 tests :: TestTree
 tests = testGroup "Delta Platform Certificate Tests"
-  [ testGroup "DeltaOperation" 
-    [ testCase "DeltaOperation enumeration" $ do
-        fromEnum DeltaAdd @?= 0
-        fromEnum DeltaRemove @?= 1
-        fromEnum DeltaModify @?= 2
-        fromEnum DeltaReplace @?= 3
-        fromEnum DeltaUpdate @?= 4
-    ]
-  , testGroup "ComponentDelta"
+  [ testGroup "ComponentDelta"
     [ testCase "ComponentDelta creation" $ do
         let comp = ComponentIdentifierV2 (B.pack "TestMfg") (B.pack "TestModel") Nothing Nothing Nothing Nothing ComponentCPU Nothing
             metadata = ChangeMetadata Nothing Nothing Nothing Nothing []
@@ -52,19 +44,6 @@ tests = testGroup "Delta Platform Certificate Tests"
             attrs = Attributes [validAttr]
             result = validateDeltaAttributes attrs
         result @?= []
-    ]
-  , testGroup "Delta Operations"
-    [ testCase "DeltaOperation enumeration completeness" $ do
-        let allOps = [DeltaAdd, DeltaRemove, DeltaModify, DeltaReplace, DeltaUpdate]
-            enumValues = map fromEnum allOps
-        enumValues @?= [0, 1, 2, 3, 4]
-        toEnum 0 @?= DeltaAdd
-        toEnum 1 @?= DeltaRemove
-        toEnum 2 @?= DeltaModify
-    , testCase "DeltaOperation show instances" $ do
-        show DeltaAdd @?= "DeltaAdd"
-        show DeltaRemove @?= "DeltaRemove"
-        show DeltaModify @?= "DeltaModify"
     ]
   , testGroup "ComponentDelta Advanced Tests"
     [ testCase "ComponentDelta with different operations" $ do

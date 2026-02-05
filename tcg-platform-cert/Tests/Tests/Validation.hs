@@ -38,14 +38,4 @@ tests = testGroup "Validation Tests"
         ci2Revision memory @?= Just (B.pack "Rev1.0")
         ci2ComponentClass memory @?= ComponentMemory
     ]
-  , testGroup "Component Class Validation"
-    [ testCase "Component classes are properly defined" $ do
-        -- Test that component class enumeration works
-        let classes = [ComponentCPU, ComponentMemory, ComponentMotherboard, ComponentNetworkInterface, ComponentGraphicsCard]
-        length classes @?= 5
-        
-        -- Test component class comparison
-        ComponentCPU == ComponentCPU @?= True
-        ComponentCPU == ComponentMemory @?= False
-    ]
   ]
