@@ -3,9 +3,17 @@
 
 import: cabal.project
 
--- Static linking flags for all local packages
+-- Disable shared libraries globally
+executable-dynamic: False
+shared: False
+
+-- Global GHC options for static linking
+program-options
+  ghc-options: -static -optl-static -optl-pthread
+
+-- Static linking flags for the main executable
 package tcg-platform-cert-util
-  ghc-options: -static -optl-static -optl-pthread -optl-no-pie
+  ghc-options: -static -optl-static -optl-pthread
 
 -- Package-specific flags
 package crypton
