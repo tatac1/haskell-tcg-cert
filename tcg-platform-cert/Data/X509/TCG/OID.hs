@@ -59,6 +59,8 @@ module Data.X509.TCG.OID
     tcg_registry_componentClass_tcg,
     tcg_registry_componentClass_ietf,
     tcg_registry_componentClass_dmtf,
+    tcg_registry_componentClass_pcie,
+    tcg_registry_componentClass_storage,
 
     -- * TCG Key Purpose OIDs
     tcg_kp_EKCertificate,
@@ -428,8 +430,9 @@ tcg_at_tcgPlatformSpecification = tcgOID ++ [2, 17]
 tcg_at_tcgCredentialSpecification :: OID
 tcg_at_tcgCredentialSpecification = tcgOID ++ [2, 23]
 
--- * TCG Platform Attribute Authority OIDs (tcg-paa arc: 2.23.133.5.1.*)
--- These OIDs are used in the subjectAltName extension of Platform Certificates
+-- * TCG Common/Platform Attribute OIDs (tcg-paa / tcg-common arc: 2.23.133.5.1.*)
+-- These OIDs identify platform identity attributes (manufacturer/model/version/serial/etc.)
+-- as defined in the IWG Platform Certificate Profile v1.1.
 
 -- | Platform Manufacturer (in subjectAltName)
 -- OID: 2.23.133.5.1.1
@@ -504,3 +507,13 @@ tcg_registry_componentClass_ietf = tcgOID ++ [18, 3, 2]
 -- OID: 2.23.133.18.3.3
 tcg_registry_componentClass_dmtf :: OID
 tcg_registry_componentClass_dmtf = tcgOID ++ [18, 3, 3]
+
+-- | PCIe Component Class Registry
+-- OID: 2.23.133.18.3.4
+tcg_registry_componentClass_pcie :: OID
+tcg_registry_componentClass_pcie = tcgOID ++ [18, 3, 4]
+
+-- | Storage Component Class Registry
+-- OID: 2.23.133.18.3.5
+tcg_registry_componentClass_storage :: OID
+tcg_registry_componentClass_storage = tcgOID ++ [18, 3, 5]

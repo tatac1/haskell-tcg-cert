@@ -50,14 +50,35 @@ module Data.X509.TCG.Platform
 where
 
 import Data.ASN1.Types
+import Data.ASN1.Types.String (ASN1CharacterString(..), ASN1StringEncoding(..))
 import Data.ASN1.Encoding (decodeASN1')
 import Data.ASN1.BinaryEncoding (DER(..))
 import qualified Data.ByteString as B
-import Data.List (find)
+import Control.Applicative ((<|>))
 import Data.X509 (Extensions(..), SignatureALG, SignedExact, decodeSignedObject, encodeSignedObject, getSigned, signedObject)
 import Data.X509.AttCert (AttCertIssuer, AttCertValidityPeriod, Holder, UniqueID)
-import Data.X509.Attribute (AttributeValue, Attributes(..), Attribute(..), attrType, attrValues)
+import Data.X509.Attribute (Attribute(..), AttributeValue, Attributes(..))
 import Data.X509.TCG.Component (ComponentIdentifier, ComponentIdentifierV2)
+import Data.X509.TCG.OID
+  ( tcg_at_platformConfiguration
+  , tcg_at_platformConfiguration_v2
+  , tcg_at_platformManufacturer
+  , tcg_at_platformModel
+  , tcg_at_platformSerial
+  , tcg_at_platformVersion
+  , tcg_paa_platformManufacturer
+  , tcg_paa_platformModel
+  , tcg_paa_platformSerial
+  , tcg_paa_platformVersion
+  , tcg_at_tpmModel
+  , tcg_at_tpmVersion
+  , tcg_at_tpmSpecification
+  )
+
+-- | Maximum size for PlatformConfiguration ASN.1 payloads (bytes).
+-- Prevents excessive memory use on malformed certificates.
+maxPlatformConfigBytes :: Int
+maxPlatformConfigBytes = 1024 * 1024
 
 -- | Platform Certificate Information structure
 --
@@ -202,11 +223,11 @@ data PlatformConfigurationV2 = PlatformConfigurationV2
 data ComponentStatus
   = -- | Component was added to the platform
     ComponentAdded
-  | -- | Component was removed from the platform
-    ComponentRemoved
   | -- | Component was modified on the platform
     ComponentModified
-  | -- | Component remains unchanged
+  | -- | Component was removed from the platform
+    ComponentRemoved
+  | -- | Component remains unchanged (non-standard; should not appear in Delta)
     ComponentUnchanged
   deriving (Show, Eq, Enum)
 
@@ -271,7 +292,7 @@ getPlatformCertificate = signedObject . getSigned
 -- | Extract Platform Configuration from a Platform Certificate
 --
 -- This function searches for the tcg-at-platformConfiguration attribute
--- (OID 2.23.133.2.1) and parses it into a structured PlatformConfiguration.
+-- (OID 2.23.133.5.1.7.1) and parses it into a structured PlatformConfiguration.
 --
 -- The platform configuration provides detailed information about:
 -- * Platform manufacturer, model, version, and serial number
@@ -288,9 +309,9 @@ getPlatformCertificate = signedObject . getSigned
 -- @
 getPlatformConfiguration :: SignedPlatformCertificate -> Maybe PlatformConfiguration
 getPlatformConfiguration cert =
-  case lookupAttribute "2.23.133.2.1" (pciAttributes $ getPlatformCertificate cert) of
-    Just attrVal -> parsePlatformConfiguration attrVal
-    Nothing -> Nothing
+  case lookupAttributeByOIDLocal tcg_at_platformConfiguration (pciAttributes $ getPlatformCertificate cert) of
+    Just (attrVal:_) -> parsePlatformConfiguration attrVal
+    _ -> Nothing
 
 -- | Extract Platform Information from a Platform Certificate
 --
@@ -298,10 +319,14 @@ getPlatformConfiguration cert =
 getPlatformInfo :: SignedPlatformCertificate -> Maybe PlatformInfo
 getPlatformInfo cert = do
   let attrs = pciAttributes $ getPlatformCertificate cert
-  manufacturer <- lookupAttributeValue "2.23.133.2.4" attrs -- tcg-at-platformManufacturer
-  model <- lookupAttributeValue "2.23.133.2.5" attrs -- tcg-at-platformModel
-  serial <- lookupAttributeValue "2.23.133.2.6" attrs -- tcg-at-platformSerial
-  version <- lookupAttributeValue "2.23.133.2.7" attrs -- tcg-at-platformVersion
+  manufacturer <- lookupAttributeValueByOID tcg_paa_platformManufacturer attrs
+    <|> lookupAttributeValueByOID tcg_at_platformManufacturer attrs
+  model <- lookupAttributeValueByOID tcg_paa_platformModel attrs
+    <|> lookupAttributeValueByOID tcg_at_platformModel attrs
+  serial <- lookupAttributeValueByOID tcg_paa_platformSerial attrs
+    <|> lookupAttributeValueByOID tcg_at_platformSerial attrs
+  version <- lookupAttributeValueByOID tcg_paa_platformVersion attrs
+    <|> lookupAttributeValueByOID tcg_at_platformVersion attrs
   return $ PlatformInfo manufacturer model serial version
 
 -- | Extract TPM Information from a Platform Certificate
@@ -310,9 +335,9 @@ getPlatformInfo cert = do
 getTPMInfo :: SignedPlatformCertificate -> Maybe TPMInfo
 getTPMInfo cert = do
   let attrs = pciAttributes $ getPlatformCertificate cert
-  model <- lookupAttributeValue "2.23.133.2.16" attrs -- tcg-at-tpmModel
-  versionData <- lookupAttributeValue "2.23.133.2.17" attrs -- tcg-at-tpmVersion
-  specData <- lookupAttributeValue "2.23.133.2.18" attrs -- tcg-at-tpmSpecification
+  model <- lookupAttributeValueByOID tcg_at_tpmModel attrs
+  versionData <- lookupAttributeValueByOID tcg_at_tpmVersion attrs
+  specData <- lookupAttributeValueByOID tcg_at_tpmSpecification attrs
   version <- parseTPMVersion versionData
   spec <- parseTPMSpecification specData
   return $ TPMInfo model version spec
@@ -325,65 +350,23 @@ getComponentStatus cert = do
 
 -- * Helper Functions
 
--- | Lookup an attribute value by OID string
---
--- This function searches through the attributes list to find an attribute
--- with the specified OID and returns its value if found.
---
--- Example:
--- @
--- case lookupAttribute "2.23.133.2.1" platformAttrs of
---   Just value -> processPlatformConfig value
---   Nothing -> handleMissingConfig
--- @
-lookupAttribute :: String -> Attributes -> Maybe AttributeValue
-lookupAttribute oidStr (Attributes attrs) = 
-  case parseOIDString oidStr of
-    Just targetOid -> 
-      case find (\attr -> attrType attr == targetOid) attrs of
-        Just attr -> case attrValues attr of
-          [[value]] -> Just value  -- Expecting single value
-          (values:_) -> case values of
-            (value:_) -> Just value  -- Take first value from first set
-            [] -> Nothing
-          _ -> Nothing
-        Nothing -> Nothing
-    Nothing -> Nothing
-  where
-    -- Parse OID string like "2.23.133.2.1" into OID list
-    parseOIDString :: String -> Maybe OID
-    parseOIDString str = 
-      let parts = words $ map (\c -> if c == '.' then ' ' else c) str
-      in traverse readMaybe parts
-    
-    readMaybe :: String -> Maybe Integer
-    readMaybe s = case reads s of
-      [(x, "")] -> Just x
-      _ -> Nothing
+-- | Lookup attribute values by OID (first matching attribute).
+lookupAttributeByOIDLocal :: OID -> Attributes -> Maybe [AttributeValue]
+lookupAttributeByOIDLocal targetOID (Attributes attrs) =
+  case [vals | Attribute oid vals <- attrs, oid == targetOID] of
+    (vals:_) -> Just (concat vals)
+    [] -> Nothing
 
 -- | Extract attribute value as ByteString by OID
---
--- This function combines attribute lookup with ByteString extraction,
--- providing a convenient way to access string-based attribute values.
---
--- Parameters:
--- * @oid@ - The OID string to search for
--- * @attrs@ - The attributes list to search in
---
--- Returns:
--- * @Just ByteString@ if the attribute is found and contains a valid string
--- * @Nothing@ if the attribute is missing or has invalid format
---
--- Example:
--- @
--- manufacturerName <- lookupAttributeValue "2.23.133.2.2" attrs
--- @
-lookupAttributeValue :: String -> Attributes -> Maybe B.ByteString
-lookupAttributeValue oid attrs = do
-  attrVal <- lookupAttribute oid attrs
-  case attrVal of
-    OctetString str -> Just str
-    _ -> Nothing
+lookupAttributeValueByOID :: OID -> Attributes -> Maybe B.ByteString
+lookupAttributeValueByOID oid attrs = do
+  values <- lookupAttributeByOIDLocal oid attrs
+  case values of
+    (attrVal:_) -> case attrVal of
+      OctetString str -> Just str
+      ASN1String (ASN1CharacterString _ str) -> Just str
+      _ -> Nothing
+    [] -> Nothing
 
 -- | Parse Platform Configuration from AttributeValue
 --
@@ -398,20 +381,22 @@ lookupAttributeValue oid attrs = do
 --   components             SEQUENCE OF ComponentIdentifier OPTIONAL
 -- }
 parsePlatformConfiguration :: AttributeValue -> Maybe PlatformConfiguration
-parsePlatformConfiguration (OctetString bytes) = 
-  case decodeASN1' DER bytes of
-    Right asn1 -> case fromASN1 asn1 of
-      Right (config, []) -> Just config
-      _ -> Nothing
-    Left _ -> Nothing
+parsePlatformConfiguration (OctetString bytes)
+  | B.length bytes > maxPlatformConfigBytes = Nothing
+  | otherwise =
+      case decodeASN1' DER bytes of
+        Right asn1 -> case fromASN1 asn1 of
+          Right (config, []) -> Just config
+          _ -> Nothing
+        Left _ -> Nothing
 parsePlatformConfiguration _ = Nothing
 
 -- | Extract Platform Configuration v2 from a Platform Certificate
 getPlatformConfigurationV2 :: SignedPlatformCertificate -> Maybe PlatformConfigurationV2
 getPlatformConfigurationV2 cert =
-  case lookupAttribute "2.23.133.2.23" (pciAttributes $ getPlatformCertificate cert) of
-    Just attrVal -> parsePlatformConfigurationV2 attrVal
-    Nothing -> Nothing
+  case lookupAttributeByOIDLocal tcg_at_platformConfiguration_v2 (pciAttributes $ getPlatformCertificate cert) of
+    Just (attrVal:_) -> parsePlatformConfigurationV2 attrVal
+    _ -> Nothing
 
 -- | Parse Platform Configuration v2 from AttributeValue
 --
@@ -426,12 +411,14 @@ getPlatformConfigurationV2 cert =
 --   components             SEQUENCE OF ComponentIdentifierV2 OPTIONAL
 -- }
 parsePlatformConfigurationV2 :: AttributeValue -> Maybe PlatformConfigurationV2
-parsePlatformConfigurationV2 (OctetString bytes) = 
-  case decodeASN1' DER bytes of
-    Right asn1 -> case fromASN1 asn1 of
-      Right (config, []) -> Just config
-      _ -> Nothing
-    Left _ -> Nothing
+parsePlatformConfigurationV2 (OctetString bytes)
+  | B.length bytes > maxPlatformConfigBytes = Nothing
+  | otherwise =
+      case decodeASN1' DER bytes of
+        Right asn1 -> case fromASN1 asn1 of
+          Right (config, []) -> Just config
+          _ -> Nothing
+        Left _ -> Nothing
 parsePlatformConfigurationV2 _ = Nothing
 
 -- | Parse TPM Version from ByteString
@@ -471,15 +458,30 @@ parseTPMSpecification bytes =
       _ -> Nothing
     Left _ -> Nothing
 
+-- | Parse a string field that may be encoded as UTF8String or OctetString.
+parseStringField :: String -> ASN1 -> Either String B.ByteString
+parseStringField _ (OctetString bs) = Right bs
+parseStringField _ (ASN1String (ASN1CharacterString _ bs)) = Right bs
+parseStringField field _ = Left (field ++ ": expected UTF8String")
+
 -- ASN.1 instances for basic types
 
 instance ASN1Object PlatformConfiguration where
   toASN1 (PlatformConfiguration manufacturer model version serial components) xs =
-    [Start Sequence, OctetString manufacturer, OctetString model, OctetString version, OctetString serial] 
+    [ Start Sequence
+    , ASN1String (ASN1CharacterString UTF8 manufacturer)
+    , ASN1String (ASN1CharacterString UTF8 model)
+    , ASN1String (ASN1CharacterString UTF8 version)
+    , ASN1String (ASN1CharacterString UTF8 serial)
+    ]
     ++ [Start Sequence] ++ concatMap (`toASN1` []) components ++ [End Sequence, End Sequence] ++ xs
-  fromASN1 (Start Sequence : OctetString manufacturer : OctetString model : OctetString version : OctetString serial : Start Sequence : rest) =
+  fromASN1 (Start Sequence : mfg : mdl : ver : ser : Start Sequence : rest) = do
+    manufacturer <- parseStringField "PlatformConfiguration manufacturer" mfg
+    model <- parseStringField "PlatformConfiguration model" mdl
+    version <- parseStringField "PlatformConfiguration version" ver
+    serial <- parseStringField "PlatformConfiguration serial" ser
     case parseComponentList rest of
-      Right (components, End Sequence : End Sequence : remaining) -> 
+      Right (components, End Sequence : End Sequence : remaining) ->
         Right (PlatformConfiguration manufacturer model version serial components, remaining)
       _ -> Left "PlatformConfiguration: Invalid component sequence"
   fromASN1 _ = Left "PlatformConfiguration: Invalid ASN1 structure"
@@ -497,11 +499,20 @@ parseComponentList asn1 = parseComponents asn1 []
 
 instance ASN1Object PlatformConfigurationV2 where
   toASN1 (PlatformConfigurationV2 manufacturer model version serial components) xs =
-    [Start Sequence, OctetString manufacturer, OctetString model, OctetString version, OctetString serial] 
+    [ Start Sequence
+    , ASN1String (ASN1CharacterString UTF8 manufacturer)
+    , ASN1String (ASN1CharacterString UTF8 model)
+    , ASN1String (ASN1CharacterString UTF8 version)
+    , ASN1String (ASN1CharacterString UTF8 serial)
+    ]
     ++ [Start Sequence] ++ concatMap (\(comp, status) -> toASN1 comp [] ++ toASN1 status []) components ++ [End Sequence, End Sequence] ++ xs
-  fromASN1 (Start Sequence : OctetString manufacturer : OctetString model : OctetString version : OctetString serial : Start Sequence : rest) =
+  fromASN1 (Start Sequence : mfg : mdl : ver : ser : Start Sequence : rest) = do
+    manufacturer <- parseStringField "PlatformConfigurationV2 manufacturer" mfg
+    model <- parseStringField "PlatformConfigurationV2 model" mdl
+    version <- parseStringField "PlatformConfigurationV2 version" ver
+    serial <- parseStringField "PlatformConfigurationV2 serial" ser
     case parseComponentListV2 rest of
-      Right (components, End Sequence : End Sequence : remaining) -> 
+      Right (components, End Sequence : End Sequence : remaining) ->
         Right (PlatformConfigurationV2 manufacturer model version serial components, remaining)
       _ -> Left "PlatformConfigurationV2: Invalid component sequence"
   fromASN1 _ = Left "PlatformConfigurationV2: Invalid ASN1 structure"
@@ -538,8 +549,8 @@ instance ASN1Object TPMSpecification where
 instance ASN1Object ComponentStatus where
   toASN1 status xs = [IntVal (fromIntegral $ fromEnum status)] ++ xs
   fromASN1 (IntVal n : xs) 
-    | n >= 0 && n <= 3 = Right (toEnum (fromIntegral n), xs)
-    | otherwise = Left "ComponentStatus: Invalid enum value"
+    | n >= 0 && n <= 2 = Right (toEnum (fromIntegral n), xs)
+    | otherwise = Left "ComponentStatus: Invalid enum value (expected 0..2)"
   fromASN1 _ = Left "ComponentStatus: Invalid ASN1 structure"
 
 instance ASN1Object ExtendedPlatformConfiguration where

@@ -78,6 +78,7 @@ where
 import Data.ASN1.BinaryEncoding (DER (..))
 import Data.ASN1.Encoding (decodeASN1', encodeASN1)
 import Data.ASN1.Types
+import Data.ASN1.Types.String (ASN1CharacterString(..), ASN1StringEncoding(..))
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Map.Strict as Map
@@ -266,6 +267,11 @@ attributeParserRegistry =
       (tcg_at_componentIdentifier, parseComponentIdAttr),
       (tcg_at_componentIdentifier_v2, parseComponentIdV2Attr),
       (tcg_at_componentClass, parseComponentClassAttr),
+      (tcg_paa_platformManufacturer, parsePlatformMfgAttr),
+      (tcg_paa_platformModel, parsePlatformModelAttr),
+      (tcg_paa_platformSerial, parsePlatformSerialAttr),
+      (tcg_paa_platformVersion, parsePlatformVersionAttr),
+      -- Legacy OIDs (v1.0) for backward compatibility
       (tcg_at_platformManufacturer, parsePlatformMfgAttr),
       (tcg_at_platformModel, parsePlatformModelAttr),
       (tcg_at_platformSerial, parsePlatformSerialAttr),
@@ -300,10 +306,10 @@ encodeTCGAttribute tcgAttr =
     TCGComponentIdentifier attr -> encodeAttribute tcg_at_componentIdentifier [encodeComponentIdAttr attr]
     TCGComponentIdentifierV2 attr -> encodeAttribute tcg_at_componentIdentifier_v2 [encodeComponentIdV2Attr attr]
     TCGComponentClass attr -> encodeAttribute tcg_at_componentClass [encodeComponentClassAttr attr]
-    TCGPlatformManufacturer attr -> encodeAttribute tcg_at_platformManufacturer [encodePlatformMfgAttr attr]
-    TCGPlatformModel attr -> encodeAttribute tcg_at_platformModel [encodePlatformModelAttr attr]
-    TCGPlatformSerial attr -> encodeAttribute tcg_at_platformSerial [encodePlatformSerialAttr attr]
-    TCGPlatformVersion attr -> encodeAttribute tcg_at_platformVersion [encodePlatformVersionAttr attr]
+    TCGPlatformManufacturer attr -> encodeAttribute tcg_paa_platformManufacturer [encodePlatformMfgAttr attr]
+    TCGPlatformModel attr -> encodeAttribute tcg_paa_platformModel [encodePlatformModelAttr attr]
+    TCGPlatformSerial attr -> encodeAttribute tcg_paa_platformSerial [encodePlatformSerialAttr attr]
+    TCGPlatformVersion attr -> encodeAttribute tcg_paa_platformVersion [encodePlatformVersionAttr attr]
     TCGTPMModel attr -> encodeAttribute tcg_at_tpmModel [encodeTPMModelAttr attr]
     TCGTPMVersion attr -> encodeAttribute tcg_at_tpmVersion [encodeTPMVersionAttr attr]
     TCGTPMSpecification attr -> encodeAttribute tcg_at_tpmSpecification [encodeTPMSpecAttr attr]
@@ -351,10 +357,10 @@ attributeOIDToType oid
   | oid == tcg_at_componentIdentifier = "componentIdentifier"
   | oid == tcg_at_componentIdentifier_v2 = "componentIdentifier_v2"
   | oid == tcg_at_componentClass = "componentClass"
-  | oid == tcg_at_platformManufacturer = "platformManufacturer"
-  | oid == tcg_at_platformModel = "platformModel"
-  | oid == tcg_at_platformSerial = "platformSerial"
-  | oid == tcg_at_platformVersion = "platformVersion"
+  | oid == tcg_paa_platformManufacturer || oid == tcg_at_platformManufacturer = "platformManufacturer"
+  | oid == tcg_paa_platformModel || oid == tcg_at_platformModel = "platformModel"
+  | oid == tcg_paa_platformSerial || oid == tcg_at_platformSerial = "platformSerial"
+  | oid == tcg_paa_platformVersion || oid == tcg_at_platformVersion = "platformVersion"
   | oid == tcg_at_tpmModel = "tpmModel"
   | oid == tcg_at_tpmVersion = "tpmVersion"
   | oid == tcg_at_tpmSpecification = "tpmSpecification"
@@ -369,10 +375,10 @@ attributeTypeToOID typeName =
     "componentIdentifier" -> Just tcg_at_componentIdentifier
     "componentIdentifier_v2" -> Just tcg_at_componentIdentifier_v2
     "componentClass" -> Just tcg_at_componentClass
-    "platformManufacturer" -> Just tcg_at_platformManufacturer
-    "platformModel" -> Just tcg_at_platformModel
-    "platformSerial" -> Just tcg_at_platformSerial
-    "platformVersion" -> Just tcg_at_platformVersion
+    "platformManufacturer" -> Just tcg_paa_platformManufacturer
+    "platformModel" -> Just tcg_paa_platformModel
+    "platformSerial" -> Just tcg_paa_platformSerial
+    "platformVersion" -> Just tcg_paa_platformVersion
     "tpmModel" -> Just tcg_at_tpmModel
     "tpmVersion" -> Just tcg_at_tpmVersion
     "tpmSpecification" -> Just tcg_at_tpmSpecification
@@ -452,18 +458,26 @@ parseComponentClassAttr _ = Left "Invalid Component Class attribute format - exp
 
 parsePlatformMfgAttr :: [[AttributeValue]] -> Either String TCGAttribute
 parsePlatformMfgAttr [[OctetString bs]] = Right $ TCGPlatformManufacturer (PlatformManufacturerAttr bs)
+parsePlatformMfgAttr [[ASN1String (ASN1CharacterString _ bs)]] =
+  Right $ TCGPlatformManufacturer (PlatformManufacturerAttr bs)
 parsePlatformMfgAttr _ = Left "Invalid Platform Manufacturer attribute"
 
 parsePlatformModelAttr :: [[AttributeValue]] -> Either String TCGAttribute
 parsePlatformModelAttr [[OctetString bs]] = Right $ TCGPlatformModel (PlatformModelAttr bs)
+parsePlatformModelAttr [[ASN1String (ASN1CharacterString _ bs)]] =
+  Right $ TCGPlatformModel (PlatformModelAttr bs)
 parsePlatformModelAttr _ = Left "Invalid Platform Model attribute"
 
 parsePlatformSerialAttr :: [[AttributeValue]] -> Either String TCGAttribute
 parsePlatformSerialAttr [[OctetString bs]] = Right $ TCGPlatformSerial (PlatformSerialAttr bs)
+parsePlatformSerialAttr [[ASN1String (ASN1CharacterString _ bs)]] =
+  Right $ TCGPlatformSerial (PlatformSerialAttr bs)
 parsePlatformSerialAttr _ = Left "Invalid Platform Serial attribute"
 
 parsePlatformVersionAttr :: [[AttributeValue]] -> Either String TCGAttribute
 parsePlatformVersionAttr [[OctetString bs]] = Right $ TCGPlatformVersion (PlatformVersionAttr bs)
+parsePlatformVersionAttr [[ASN1String (ASN1CharacterString _ bs)]] =
+  Right $ TCGPlatformVersion (PlatformVersionAttr bs)
 parsePlatformVersionAttr _ = Left "Invalid Platform Version attribute"
 
 parseTPMModelAttr :: [[AttributeValue]] -> Either String TCGAttribute
@@ -666,16 +680,20 @@ encodeComponentClassAttr (ComponentClassAttr compClass mDescription) =
    in [OctetString encoded]
 
 encodePlatformMfgAttr :: PlatformManufacturerAttr -> [AttributeValue]
-encodePlatformMfgAttr (PlatformManufacturerAttr bs) = [OctetString bs]
+encodePlatformMfgAttr (PlatformManufacturerAttr bs) =
+  [ASN1String (ASN1CharacterString UTF8 bs)]
 
 encodePlatformModelAttr :: PlatformModelAttr -> [AttributeValue]
-encodePlatformModelAttr (PlatformModelAttr bs) = [OctetString bs]
+encodePlatformModelAttr (PlatformModelAttr bs) =
+  [ASN1String (ASN1CharacterString UTF8 bs)]
 
 encodePlatformSerialAttr :: PlatformSerialAttr -> [AttributeValue]
-encodePlatformSerialAttr (PlatformSerialAttr bs) = [OctetString bs]
+encodePlatformSerialAttr (PlatformSerialAttr bs) =
+  [ASN1String (ASN1CharacterString UTF8 bs)]
 
 encodePlatformVersionAttr :: PlatformVersionAttr -> [AttributeValue]
-encodePlatformVersionAttr (PlatformVersionAttr bs) = [OctetString bs]
+encodePlatformVersionAttr (PlatformVersionAttr bs) =
+  [ASN1String (ASN1CharacterString UTF8 bs)]
 
 encodeTPMModelAttr :: TPMModelAttr -> [AttributeValue]
 encodeTPMModelAttr (TPMModelAttr bs) = [OctetString bs]
@@ -746,10 +764,10 @@ checkRequiredAttributes attrs =
       TCGComponentIdentifier _ -> tcg_at_componentIdentifier
       TCGComponentIdentifierV2 _ -> tcg_at_componentIdentifier_v2
       TCGComponentClass _ -> tcg_at_componentClass
-      TCGPlatformManufacturer _ -> tcg_at_platformManufacturer
-      TCGPlatformModel _ -> tcg_at_platformModel
-      TCGPlatformSerial _ -> tcg_at_platformSerial
-      TCGPlatformVersion _ -> tcg_at_platformVersion
+      TCGPlatformManufacturer _ -> tcg_paa_platformManufacturer
+      TCGPlatformModel _ -> tcg_paa_platformModel
+      TCGPlatformSerial _ -> tcg_paa_platformSerial
+      TCGPlatformVersion _ -> tcg_paa_platformVersion
       TCGTPMModel _ -> tcg_at_tpmModel
       TCGTPMVersion _ -> tcg_at_tpmVersion
       TCGTPMSpecification _ -> tcg_at_tpmSpecification

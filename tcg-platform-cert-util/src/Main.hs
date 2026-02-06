@@ -11,6 +11,7 @@
 -- - generate-delta: Generate delta certificates for platform updates
 -- - show: Display certificate information
 -- - validate: Validate certificate compliance
+-- - compliance: Run IWG Profile v1.1 compliance tests
 -- - components: Extract component information
 -- - create-config: Create example YAML configuration
 -- - convert: Convert paccor JSON to YAML format
@@ -50,6 +51,12 @@ createConfigMain _ = do
 convertMain :: [String] -> IO ()
 convertMain = getoptMain optionsConvert $ \o n -> doConvert o n
 
+complianceMain :: [String] -> IO ()
+complianceMain = getoptMain optionsCompliance $ \o n -> doCompliance o n
+
+lintMain :: [String] -> IO ()
+lintMain = getoptMain optionsLint $ \o n -> doLint o n
+
 -- | Main entry point
 main :: IO ()
 main = do
@@ -63,6 +70,8 @@ main = do
     "components" : as -> componentsMain as
     "create-config" : as -> createConfigMain as
     "convert" : as -> convertMain as
+    "compliance" : as -> complianceMain as
+    "lint" : as -> lintMain as
     "help" : _ -> usage
     "--help" : _ -> usage
     _ -> do

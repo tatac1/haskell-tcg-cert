@@ -38,6 +38,9 @@ Library
                    , Data.X509.TCG.Util.OID
                    , Data.X509.TCG.Util.Paccor
                    , Data.X509.TCG.Util.HardwareCollector
+                   , Data.X509.TCG.Util.ConfigLint
+                   , Data.X509.TCG.Util.PreIssuance
+                   , Data.X509.TCG.Util.JsonReport
   Build-depends:     base >= 4 && < 5
                    , aeson
                    , base64-bytestring
@@ -57,6 +60,7 @@ Library
                    , crypton-asn1-types >= 0.3
                    , crypton-asn1-encoding
                    , tcg-platform-cert
+                   , tcg-platform-cert-compliance
                    , yaml
                    , platform-hardware-info
   GHC-Options:       -Wall
@@ -69,6 +73,9 @@ Executable           tcg-platform-cert-util
                    , Data.X509.TCG.Util.CLI
                    , Data.X509.TCG.Util.Certificate
                    , Data.X509.TCG.Util.Config
+                   , Data.X509.TCG.Util.ConfigLint
+                   , Data.X509.TCG.Util.PreIssuance
+                   , Data.X509.TCG.Util.JsonReport
                    , Data.X509.TCG.Util.Display
                    , Data.X509.TCG.Util.OID
                    , Data.X509.TCG.Util.Paccor
@@ -93,6 +100,7 @@ Executable           tcg-platform-cert-util
                    , crypton-asn1-types >= 0.3
                    , crypton-asn1-encoding
                    , tcg-platform-cert
+                   , tcg-platform-cert-compliance
                    , yaml
                    , platform-hardware-info
   GHC-Options:       -Wall
@@ -104,6 +112,7 @@ Test-Suite           test-tcg-platform-cert-util
   hs-source-dirs:    test
   Buildable:         True
   Build-depends:     base >= 4 && < 5
+                   , aeson
                    , bytestring
                    , directory
                    , filepath
@@ -117,6 +126,7 @@ Test-Suite           test-tcg-platform-cert-util
                    , crypton-asn1-types >= 0.3
                    , crypton-asn1-encoding
                    , tcg-platform-cert
+                   , tcg-platform-cert-compliance
                    , tcg-platform-cert-util
                    , yaml
                    , tasty

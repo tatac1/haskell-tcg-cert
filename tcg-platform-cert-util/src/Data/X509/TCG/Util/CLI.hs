@@ -1,3 +1,4 @@
+{-# LANGUAGE DisambiguateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -22,6 +23,8 @@ module Data.X509.TCG.Util.CLI
     doValidate,
     doComponents,
     doConvert,
+    doCompliance,
+    doLint,
     createExampleConfig,
 
     -- * Option Parsers
@@ -31,6 +34,8 @@ module Data.X509.TCG.Util.CLI
     optionsValidate,
     optionsComponents,
     optionsConvert,
+    optionsCompliance,
+    optionsLint,
 
     -- * Utility Functions
     extractOpt,
@@ -40,20 +45,27 @@ module Data.X509.TCG.Util.CLI
 where
 
 import Control.Monad (forM_, when)
+import Data.Aeson (Value(..), object, (.=))
 import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
+import qualified Data.ByteString.Lazy as LBS
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
+import qualified Data.Text as T
 import Data.PEM (PEM (..), pemContent, pemParseBS, pemWriteBS)
 import Data.Time.Clock (getCurrentTime)
 import Data.X509 (decodeSignedCertificate, getCertificate)
 import Data.X509.TCG
+import Data.X509.TCG.Compliance
 -- Local imports
 import Data.X509.TCG.Util.ASN1
 import Data.X509.TCG.Util.Certificate
 import Data.X509.TCG.Util.Config
+import Data.X509.TCG.Util.ConfigLint
 import Data.X509.TCG.Util.Display
+import Data.X509.TCG.Util.PreIssuance (preIssuanceLintOnly, shouldBlockLint)
+import Data.X509.TCG.Util.JsonReport
 import Data.X509.TCG.Util.Paccor
 import System.Console.GetOpt
 import System.Exit
@@ -82,7 +94,14 @@ data TCGOpts
     HashAlgorithm String
   | -- Convert options
     FromPaccor
+  | -- Compliance mode option
+    Compat
+  | StrictV11Mode
   | InputFile String
+  | -- Pre-issuance compliance options
+    SkipCompliance
+  | JsonOutput
+  | ChainMode
   deriving (Show, Eq)
 
 -- | Generate a new platform certificate
@@ -92,13 +111,14 @@ doGenerate opts _ = do
     putStrLn $ usageInfo "usage: tcg-platform-cert-util generate [options]" optionsGenerate
     exitSuccess
 
-  putStrLn "Generating platform certificate..."
+  let jsonMode' = JsonOutput `elem` opts
+  when (not jsonMode') $ putStrLn "Generating platform certificate..."
 
   -- Check for config file option first
   let configFile = extractOpt "config" (\case ConfigFile f -> Just f; _ -> Nothing) opts ""
 
   -- Load configuration from config file (YAML or paccor JSON) or command line options
-  (manufacturer, model, version, serial, _keySize, _validityDays, components, mExtAttrs) <-
+  (manufacturer, model, version, serial, _keySize, _validityDays, components, mExtAttrs, mYamlConfig) <-
     if null configFile
       then do
         -- Use command line options
@@ -108,10 +128,10 @@ doGenerate opts _ = do
             serial = extractOpt "serial" (\case Serial s -> Just s; _ -> Nothing) opts "0001"
             keySize = extractOpt "key-size" (\case KeySize k -> Just (show k); _ -> Nothing) opts "2048"
             validityDays = extractOpt "validity" (\case ValidityDays d -> Just (show d); _ -> Nothing) opts "365"
-        return (manufacturer, model, version, serial, keySize, validityDays, [], Nothing)
+        return (manufacturer, model, version, serial, keySize, validityDays, [], Nothing, Nothing)
       else do
         -- Load from config file (auto-detect YAML or paccor JSON format)
-        putStrLn $ "Loading configuration from: " ++ configFile
+        when (not jsonMode') $ putStrLn $ "Loading configuration from: " ++ configFile
         result <- loadAnyConfig configFile
         case result of
           Left err -> do
@@ -122,7 +142,7 @@ doGenerate opts _ = do
                 validityDays = show $ fromMaybe 365 (pccValidityDays config)
                 -- Extract extended TCG attributes from config
                 extAttrs = configToExtendedAttrs config
-            putStrLn "  Extended TCG attributes loaded from config file"
+            when (not jsonMode') $ putStrLn "  Extended TCG attributes loaded from config file"
             return
               ( pccManufacturer config,
                 pccModel config,
@@ -131,7 +151,8 @@ doGenerate opts _ = do
                 keySize,
                 validityDays,
                 pccComponents config,
-                Just extAttrs
+                Just extAttrs,
+                Just config
               )
 
   -- Extract remaining options
@@ -141,18 +162,7 @@ doGenerate opts _ = do
       ekCertFile = extractOpt "ek-cert" (\case TPMEKCertificate e -> Just e; _ -> Nothing) opts ""
       hashAlg = extractOpt "hash" (\case HashAlgorithm h -> Just h; _ -> Nothing) opts "sha384"
 
-  -- Create platform configuration
-  let _config =
-        PlatformConfiguration
-          { pcManufacturer = BC.pack manufacturer,
-            pcModel = BC.pack model,
-            pcVersion = BC.pack version,
-            pcSerial = BC.pack serial,
-            pcComponents = map yamlComponentToComponentIdentifier components
-          }
-
-      -- Create TPM info based on standard TPM 2.0 specification
-      tpmInfo = createDefaultTPMInfo
+  let tpmInfo = createDefaultTPMInfo
 
   -- Check if CA key, certificate, and EK certificate are provided (now required)
   if null caKeyFile || null caCertFile || null ekCertFile
@@ -164,9 +174,10 @@ doGenerate opts _ = do
       putStrLn "  tcg-platform-cert-util generate --manufacturer \"Company\" --model \"Model\" --version \"1.0\" --serial \"001\" --ca-key ca-key.pem --ca-cert ca-cert.pem --ek-cert ek-cert.pem --output cert.pem"
       exitFailure
     else do
-      putStrLn $ "Loading CA private key from: " ++ caKeyFile
-      putStrLn $ "Loading CA certificate from: " ++ caCertFile
-      putStrLn $ "Loading TPM EK certificate from: " ++ ekCertFile
+      when (not jsonMode') $ do
+        putStrLn $ "Loading CA private key from: " ++ caKeyFile
+        putStrLn $ "Loading CA certificate from: " ++ caCertFile
+        putStrLn $ "Loading TPM EK certificate from: " ++ ekCertFile
 
       -- Load CA key, CA certificate, and EK certificate
       keyResult <- loadPrivateKey caKeyFile
@@ -174,11 +185,12 @@ doGenerate opts _ = do
       ekCertResult <- loadCACertificate ekCertFile -- Reuse the same function for loading EK cert
       case (keyResult, certResult, ekCertResult) of
         (Right caPrivKey, Right caCert, Right ekCert) -> do
-          putStrLn "CA credentials and TPM EK certificate loaded successfully"
-          when (not $ null components) $ do
-            putStrLn $ "Including " ++ show (length components) ++ " component(s) from configuration:"
-            forM_ components $ \comp -> do
-              putStrLn $ "  - " ++ ccManufacturer comp ++ " " ++ ccModel comp ++ " (Class: " ++ ccClass comp ++ ")"
+          when (not jsonMode') $ do
+            putStrLn "CA credentials and TPM EK certificate loaded successfully"
+            when (not $ null components) $ do
+              putStrLn $ "Including " ++ show (length components) ++ " component(s) from configuration:"
+              forM_ components $ \comp -> do
+                putStrLn $ "  - " ++ ccManufacturer comp ++ " " ++ ccModel comp ++ " (Class: " ++ ccClass comp ++ ")"
 
           -- Create config structure with components from YAML or empty list
           let componentIdentifiers = map yamlComponentToComponentIdentifier components
@@ -191,93 +203,111 @@ doGenerate opts _ = do
                     pcComponents = componentIdentifiers
                   }
 
-          -- COMPREHENSIVE PRE-GENERATION VALIDATION
-          putStrLn ""
-          putStrLn " Performing comprehensive pre-generation validation..."
-          putStrLn " This validation ensures full TCG Platform Certificate Profile v1.1 compliance"
-          putStrLn ""
+          -- Pre-issuance Layer 1: Config lint
+          let skipCompliance = SkipCompliance `elem` opts
+              compMode = if StrictV11Mode `elem` opts then StrictV11 else OperationalCompatibility
+              jsonMode = JsonOutput `elem` opts
 
-          -- Step 1: Basic validations
-          configValidation <- validatePlatformConfiguration platformConfig
-          -- TODO Too many nested case - refactor
-          case configValidation of
+          when (Compat `elem` opts && StrictV11Mode `elem` opts) $ do
+            putStrLn "Error: --compat and --strict-v11 cannot be used together."
+            exitFailure
+
+          case mYamlConfig of
+            Just yamlConfig | not skipCompliance -> do
+              when (not jsonMode') $ do
+                putStrLn ""
+                putStrLn "Running pre-issuance config lint..."
+              let lintResults = preIssuanceLintOnly yamlConfig
+              when (shouldBlockLint compMode lintResults) $ do
+                putStrLn ""
+                putStrLn "Pre-issuance config lint FAILED:"
+                displayLintResults lintResults
+                exitFailure
+              let passCount = length [r | r <- lintResults, clrStatus r == LintPass]
+                  warnCount = length [r | r <- lintResults, clrStatus r == LintWarn]
+              when (not jsonMode') $ putStrLn $ "  Config lint: " ++ show passCount ++ " passed, " ++ show warnCount ++ " warnings"
+            _ -> return ()
+
+          -- Pre-generation validation (hash and key compatibility only; other checks covered by Layer 1/2)
+          when (not jsonMode) $ do
+            putStrLn ""
+            putStrLn " Performing pre-generation validation..."
+
+          hashValidation <- validateHashAlgorithm hashAlg
+          case hashValidation of
+            Left err -> do { putStrLn err; exitFailure }
+            Right _ -> return ()
+
+          keyValidation <- validatePrivateKeyCompatibility caPrivKey hashAlg
+          case keyValidation of
+            Left err -> do { putStrLn err; exitFailure }
+            Right _ -> return ()
+
+          when (not jsonMode) $ do
+            putStrLn ""
+            putStrLn " Pre-generation validation passed."
+            putStrLn " Generating certificate with real signature and proper EK certificate binding..."
+
+          -- Generate certificate
+          when (not jsonMode') $ putStrLn $ "Using hash algorithm: " ++ hashAlg
+          result <- case mExtAttrs of
+            Just extAttrs -> do
+              when (not jsonMode') $ putStrLn "  Using extended TCG attributes for IWG v1.1 compliance"
+              createSignedPlatformCertificateExt platformConfig componentIdentifiers tpmInfo caPrivKey caCert ekCert hashAlg extAttrs
+            Nothing -> do
+              when (not jsonMode') $ putStrLn "  Using default TCG attributes"
+              createSignedPlatformCertificate platformConfig componentIdentifiers tpmInfo caPrivKey caCert ekCert hashAlg
+          case result of
             Left err -> do
-              putStrLn err
+              putStrLn $ "Certificate generation failed: " ++ err
               exitFailure
-            Right _ -> do
-              componentValidation <- validateComponentIdentifiers componentIdentifiers
-              case componentValidation of
+            Right cert -> do
+              when (not jsonMode') $ putStrLn "Certificate generated successfully"
+
+              -- Post-generation verification
+              verificationResult <- verifyGeneratedCertificate cert platformConfig componentIdentifiers
+              case verificationResult of
                 Left err -> do
                   putStrLn err
+                  putStrLn "  Certificate generation completed but verification failed"
                   exitFailure
-                Right _ -> do
-                  hashValidation <- validateHashAlgorithm hashAlg
-                  case hashValidation of
-                    Left err -> do
-                      putStrLn err
-                      exitFailure
-                    Right _ -> do
-                      keyValidation <- validatePrivateKeyCompatibility caPrivKey hashAlg
-                      case keyValidation of
-                        Left err -> do
-                          putStrLn err
-                          exitFailure
-                        Right _ -> do
-                          -- Step 2: Comprehensive context validation
-                          contextValidation <-
-                            validateCertificateGenerationContext
-                              platformConfig
-                              componentIdentifiers
-                              caPrivKey
-                              caCert
-                              ekCert
-                              hashAlg
-                          case contextValidation of
-                            Left err -> do
-                              putStrLn err
-                              exitFailure
-                            Right _ -> do
-                              putStrLn ""
-                              putStrLn " ALL COMPREHENSIVE VALIDATIONS PASSED!"
-                              putStrLn " Certificate generation ready with full TCG v1.1 compliance"
-                              putStrLn " Generating certificate with real signature and proper EK certificate binding..."
+                Right _ -> return ()
 
-                          -- Generate certificate with real signature, components, and EK cert
-                          putStrLn $ "Using hash algorithm: " ++ hashAlg
-                          -- Use extended attributes if available (from config file)
-                          result <- case mExtAttrs of
-                            Just extAttrs -> do
-                              putStrLn "  Using extended TCG attributes for IWG v1.1 compliance"
-                              createSignedPlatformCertificateExt platformConfig componentIdentifiers tpmInfo caPrivKey caCert ekCert hashAlg extAttrs
-                            Nothing -> do
-                              putStrLn "  Using default TCG attributes"
-                              createSignedPlatformCertificate platformConfig componentIdentifiers tpmInfo caPrivKey caCert ekCert hashAlg
-                          case result of
-                            Right cert -> do
-                              putStrLn $ "Certificate generated successfully with real signature and EK certificate binding"
+              -- Pre-issuance Layer 2: Post-generation compliance check
+              when (not skipCompliance) $ do
+                when (not jsonMode') $ do
+                  putStrLn ""
+                  putStrLn "Running post-generation compliance check..."
+                let compOpts = defaultComplianceOptions
+                      { coMode = compMode
+                      , coVerbose = Verbose `elem` opts
+                      }
+                compResult <- runComplianceTest cert compOpts
+                when (not (resCompliant compResult)) $ do
+                  putStrLn "Post-generation compliance check FAILED."
+                  putStrLn $ "  " ++ show (resTotalFailedRequired compResult) ++ " required checks failed"
+                  exitFailure
+                when (not jsonMode') $ putStrLn "  Post-generation compliance check PASSED."
 
-                              -- POST-GENERATION VERIFICATION
-                              verificationResult <- verifyGeneratedCertificate cert platformConfig componentIdentifiers
-                              case verificationResult of
-                                Left err -> do
-                                  putStrLn err
-                                  putStrLn "  Certificate generation completed but verification failed"
-                                  putStrLn "  The generated certificate may not comply with standards"
-                                  exitFailure
-                                Right _ -> do
-                                  -- Convert to DER and then to PEM
-                                  let derBytes = encodeSignedPlatformCertificate cert
-                                      pem =
-                                        PEM
-                                          { pemName = "PLATFORM CERTIFICATE",
-                                            pemHeader = [],
-                                            pemContent = derBytes
-                                          }
-                                  writePEMFile outputFile [pem]
-                                  putStrLn $ "Certificate written to: " ++ outputFile
-                            Left err -> do
-                              putStrLn $ "Certificate generation failed: " ++ err
-                              exitFailure
+              -- Write certificate
+              let derBytes = encodeSignedPlatformCertificate cert
+                  pem =
+                    PEM
+                      { pemName = "PLATFORM CERTIFICATE",
+                        pemHeader = [],
+                        pemContent = derBytes
+                      }
+              writePEMFile outputFile [pem]
+              if jsonMode'
+                then do
+                  now <- getCurrentTime
+                  let lintResults' = case mYamlConfig of
+                        Just yamlConfig | not skipCompliance -> preIssuanceLintOnly yamlConfig
+                        _ -> []
+                      mCompValue = Nothing  -- compliance result already checked above
+                      report = buildGenerateReport compMode lintResults' mCompValue (Just outputFile) True now
+                  BC.putStrLn $ LBS.toStrict $ renderJsonReport report
+                else putStrLn $ "Certificate written to: " ++ outputFile
         (Left keyErr, _, _) -> do
           putStrLn $ "Error loading CA private key: " ++ keyErr
           exitFailure
@@ -599,6 +629,10 @@ optionsGenerate =
     Option ['e'] ["ek-cert"] (ReqArg TPMEKCertificate "FILE") "TPM EK certificate file (PEM format) [REQUIRED]",
     Option ['f'] ["config"] (ReqArg ConfigFile "FILE") "YAML configuration file (alternative to individual options)",
     Option [] ["hash"] (ReqArg HashAlgorithm "ALGORITHM") "Hash algorithm (sha256|sha384|sha512, default: sha384)",
+    Option [] ["skip-compliance"] (NoArg SkipCompliance) "skip pre-issuance compliance checks",
+    Option [] ["compat"] (NoArg Compat) "operational compatibility profile (default)",
+    Option [] ["strict-v11"] (NoArg StrictV11Mode) "strict v1.1 profile",
+    Option [] ["json"] (NoArg JsonOutput) "output results in JSON format",
     Option ['h'] ["help"] (NoArg Help) "show help"
   ]
 
@@ -656,40 +690,467 @@ doConvert opts files = do
     putStrLn "  tcg-platform-cert-util convert --from-paccor device.json"
     exitSuccess
 
-  when (null files) $ do
-    putStrLn "Error: No input file specified"
-    putStrLn ""
-    putStrLn $ usageInfo "usage: tcg-platform-cert-util convert [options] <input-file>" optionsConvert
-    exitFailure
-
-  let inputFile = head files
-      outputFile = extractOpt "output" (\case Output o -> Just o; _ -> Nothing) opts ""
-      defaultOutput = replaceExtension inputFile ".yaml"
-      finalOutput = if null outputFile then defaultOutput else outputFile
-
-  putStrLn $ "Converting: " ++ inputFile
-  putStrLn $ "Output: " ++ finalOutput
-
-  -- Load and convert
-  result <- loadPaccorConfig inputFile
-  case result of
-    Left err -> do
-      putStrLn $ "Error parsing paccor JSON: " ++ err
-      exitFailure
-    Right paccorConfig -> do
-      savePaccorAsYaml paccorConfig finalOutput
-      let platform = paccorPlatform paccorConfig
-          componentCount = maybe 0 length (paccorComponents paccorConfig)
+  case files of
+    [] -> do
+      putStrLn "Error: No input file specified"
       putStrLn ""
-      putStrLn "Conversion successful!"
-      putStrLn $ "  Platform: " ++ show (platformManufacturerStr platform) ++ " " ++ show (platformModel platform)
-      putStrLn $ "  Components: " ++ show componentCount
+      putStrLn $ usageInfo "usage: tcg-platform-cert-util convert [options] <input-file>" optionsConvert
+      exitFailure
+    (inputFile : _) -> do
+      let outputFile = extractOpt "output" (\case Output o -> Just o; _ -> Nothing) opts ""
+          defaultOutput = replaceExtension inputFile ".yaml"
+          finalOutput = if null outputFile then defaultOutput else outputFile
+
+      putStrLn $ "Converting: " ++ inputFile
+      putStrLn $ "Output: " ++ finalOutput
+
+      -- Load and convert
+      result <- loadPaccorConfig inputFile
+      case result of
+        Left err -> do
+          putStrLn $ "Error parsing paccor JSON: " ++ err
+          exitFailure
+        Right paccorConfig -> do
+          savePaccorAsYaml paccorConfig finalOutput
+          let platform = paccorPlatform paccorConfig
+              componentCount = maybe 0 length (paccorComponents paccorConfig)
+          putStrLn ""
+          putStrLn "Conversion successful!"
+          putStrLn $ "  Platform: " ++ show (platformManufacturerStr platform) ++ " " ++ show (platformModel platform)
+          putStrLn $ "  Components: " ++ show componentCount
   where
     -- Replace file extension
     replaceExtension :: FilePath -> String -> FilePath
     replaceExtension path newExt =
       let base = reverse $ drop 1 $ dropWhile (/= '.') $ reverse path
       in if null base then path ++ newExt else base ++ newExt
+
+-- | Compliance check options
+optionsCompliance :: [OptDescr TCGOpts]
+optionsCompliance =
+  [ Option ['v'] ["verbose"] (NoArg Verbose) "verbose output with detailed check results",
+    Option ['b'] ["base"] (ReqArg BaseCertificate "FILE") "base certificate for Delta comparison",
+    Option [] ["compat"] (NoArg Compat) "operational compatibility profile (default)",
+    Option [] ["strict-v11"] (NoArg StrictV11Mode) "strict v1.1 profile (tcg/ietf/dmtf only, v2 platformConfiguration OID)",
+    Option [] ["chain"] (NoArg ChainMode) "chain compliance mode (first file = Base, rest = Deltas)",
+    Option [] ["json"] (NoArg JsonOutput) "output results in JSON format",
+    Option ['h'] ["help"] (NoArg Help) "show help"
+  ]
+
+-- | Run IWG Platform Certificate Profile v1.1 compliance checks
+doCompliance :: [TCGOpts] -> [String] -> IO ()
+doCompliance opts files = do
+  when (Help `elem` opts) $ do
+    putStrLn $ usageInfo "usage: tcg-platform-cert-util compliance [options] <certificate-file(s)>" optionsCompliance
+    putStrLn ""
+    putStrLn "Runs IWG Platform Certificate Profile v1.1 compliance checks."
+    putStrLn "Default mode is OperationalCompatibility; use --strict-v11 for strict v1.1 behavior."
+    putStrLn ""
+    putStrLn "For Delta certificate testing, use --base to provide the base certificate:"
+    putStrLn "  tcg-platform-cert-util compliance --base base.pem delta.pem"
+    putStrLn ""
+    putStrLn "For chain compliance, use --chain with Base + Delta files:"
+    putStrLn "  tcg-platform-cert-util compliance --chain base.pem delta1.pem delta2.pem"
+    exitSuccess
+
+  let verbose = Verbose `elem` opts
+      compatMode = Compat `elem` opts
+      strictV11Mode = StrictV11Mode `elem` opts
+      mode = if strictV11Mode then StrictV11 else OperationalCompatibility
+      jsonMode = JsonOutput `elem` opts
+      chainMode = ChainMode `elem` opts
+      baseCertPath = listToMaybe [f | BaseCertificate f <- opts]
+
+  when (compatMode && strictV11Mode) $ do
+    putStrLn "Error: --compat and --strict-v11 cannot be used together."
+    exitFailure
+
+  when (chainMode && maybe False (const True) baseCertPath) $ do
+    putStrLn "Error: --chain and --base cannot be used together."
+    exitFailure
+
+  case files of
+    [] -> do
+      putStrLn "Error: No certificate file specified"
+      putStrLn ""
+      putStrLn $ usageInfo "usage: tcg-platform-cert-util compliance [options] <certificate-file(s)>" optionsCompliance
+      exitFailure
+    _ | chainMode -> doChainCompliance opts files mode jsonMode verbose
+    (file : _) -> doSingleCompliance file opts mode baseCertPath jsonMode verbose
+
+-- | Run single-certificate compliance check
+doSingleCompliance :: FilePath -> [TCGOpts] -> ComplianceMode -> Maybe FilePath -> Bool -> Bool -> IO ()
+doSingleCompliance file _opts mode baseCertPath jsonMode verbose = do
+  when (not jsonMode) $ do
+    putStrLn $ "Running compliance checks on: " ++ file
+    putStrLn $ "Compliance mode: " ++ T.unpack (complianceModeText mode)
+    case baseCertPath of
+      Just bp -> putStrLn $ "Using base certificate: " ++ bp
+      Nothing -> return ()
+    putStrLn ""
+
+  -- Read and parse the certificate file
+  result <- readPEMFile file
+  case result of
+    [] -> do
+      putStrLn "Error: No certificates found in file"
+      exitFailure
+    (pem : _) -> do
+      case decodeSignedPlatformCertificate (pemContent pem) of
+        Left err -> do
+          putStrLn $ "Error: Failed to parse as Platform Certificate: " ++ err
+          exitFailure
+        Right cert -> do
+          -- Load base certificate if provided
+          mBaseCert <- case baseCertPath of
+            Nothing -> return Nothing
+            Just bp -> do
+              baseResult <- readPEMFile bp
+              case baseResult of
+                [] -> do
+                  putStrLn $ "Warning: No certificates found in base file: " ++ bp
+                  return Nothing
+                (basePem : _) ->
+                  case decodeSignedPlatformCertificate (pemContent basePem) of
+                    Left err -> do
+                      putStrLn $ "Warning: Failed to parse base certificate: " ++ err
+                      return Nothing
+                    Right baseCert -> return (Just baseCert)
+
+          -- Run compliance test
+          let compOpts = defaultComplianceOptions
+                { coVerbose = verbose
+                , coBaseCert = mBaseCert
+                , coMode = mode
+                }
+          compResult <- runComplianceTest cert compOpts
+
+          if jsonMode
+            then do
+              now <- getCurrentTime
+              let report = buildComplianceReport "compliance" mode compResult now
+              BC.putStrLn $ LBS.toStrict $ renderJsonReport report
+            else do
+              -- Display text results
+              putStrLn "=========================================="
+              putStrLn "  IWG Platform Certificate Profile v1.1"
+              putStrLn "        Compliance Test Results"
+              putStrLn "=========================================="
+              putStrLn ""
+              putStrLn $ "Subject: " ++ show (resSubject compResult)
+              putStrLn $ "Serial:  " ++ show (resSerialNumber compResult)
+              putStrLn $ "Type:    " ++ show (resCertType compResult)
+              putStrLn $ "Mode:    " ++ T.unpack (complianceModeText (resComplianceMode compResult))
+              putStrLn ""
+
+              forM_ (resCategories compResult) $ \catResult -> do
+                let catName' = show (catName catResult)
+                    passed = catPassed catResult
+                    failed = catFailed catResult
+                    failedReq = catFailedRequired catResult
+                    failedRec = catFailedRecommended catResult
+                    skipped = catSkipped catResult
+                    errors = catErrors catResult
+                    total = passed + failed + skipped + errors
+                putStrLn $ catName' ++ ": " ++ show passed ++ "/" ++ show total ++ " passed"
+                        ++ (if failedReq > 0 then " (" ++ show failedReq ++ " required failed)" else "")
+                        ++ (if failedRec > 0 then " (" ++ show failedRec ++ " recommended failed)" else "")
+                        ++ (if errors > 0 then " (" ++ show errors ++ " errors)" else "")
+
+                when verbose $ do
+                  forM_ (catChecks catResult) $ \check -> do
+                    let statusStr = case crStatus check of
+                          Pass -> " [PASS] "
+                          Fail reason -> " [FAIL] " ++ show reason
+                          Skip reason -> " [SKIP] " ++ show reason
+                          Error err' -> " [ERR]  " ++ show err'
+                        refShort = formatReferenceShort (crReference check)
+                        level = requirementLevelText (srLevel (crReference check))
+                        refInfo = " (" ++ T.unpack refShort ++ " " ++ T.unpack level ++ ")"
+                    putStrLn $ "    " ++ show (crId check) ++ statusStr ++ refInfo
+
+              putStrLn ""
+              putStrLn "=========================================="
+              putStrLn $ "Total: " ++ show (resTotalPassed compResult) ++ " passed, "
+                      ++ show (resTotalFailedRequired compResult) ++ " required failed, "
+                      ++ show (resTotalFailedRecommended compResult) ++ " recommended failed, "
+                      ++ show (resTotalSkipped compResult) ++ " skipped, "
+                      ++ show (resTotalErrors compResult) ++ " errors"
+              putStrLn ""
+
+              if resCompliant compResult
+                then do
+                  putStrLn "  COMPLIANT with IWG Profile v1.1"
+                  putStrLn "=========================================="
+                else do
+                  putStrLn "  NOT COMPLIANT with IWG Profile v1.1"
+                  putStrLn "=========================================="
+                  exitFailure
+
+          when (not (resCompliant compResult) && jsonMode) exitFailure
+
+-- | Run chain compliance checks across Base + Delta certificates
+doChainCompliance :: [TCGOpts] -> [String] -> ComplianceMode -> Bool -> Bool -> IO ()
+doChainCompliance _opts files mode jsonMode _verbose = do
+  case files of
+    [] -> do
+      putStrLn "Error: --chain requires at least one certificate file (Base)"
+      exitFailure
+    (baseFile : deltaFiles) -> do
+      -- Load Base certificate
+      basePemResult <- readPEMFile baseFile
+      baseCert <- case basePemResult of
+        [] -> do { putStrLn $ "Error: No certificates in base file: " ++ baseFile; exitFailure }
+        (pem:_) -> case decodeSignedPlatformCertificate (pemContent pem) of
+          Left err -> do { putStrLn $ "Error: Failed to parse base cert: " ++ err; exitFailure }
+          Right c -> return c
+
+      -- Load Delta certificates
+      deltaCerts <- mapM (\df -> do
+        pemResult <- readPEMFile df
+        case pemResult of
+          [] -> do { putStrLn $ "Error: No certificates in delta file: " ++ df; exitFailure }
+          (pem:_) -> case decodeSignedPlatformCertificate (pemContent pem) of
+            Left err -> do { putStrLn $ "Error: Failed to parse delta cert " ++ df ++ ": " ++ err; exitFailure }
+            Right c -> return c
+        ) deltaFiles
+
+      -- Extract identity from PlatformInfo
+      let extractIdentity cert = case getPlatformInfo cert of
+            Just pi' -> (piManufacturer pi', piModel pi', piVersion pi')
+            Nothing  -> ("", "", "")
+          baseIdentity = extractIdentity baseCert
+          deltaIdentities = map extractIdentity deltaCerts
+
+      -- Extract serial numbers
+      let baseSerial = pciSerialNumber (getPlatformCertificate baseCert)
+          deltaSerials = map (pciSerialNumber . getPlatformCertificate) deltaCerts
+
+      -- Extract components as CompId tuples
+      let extractCompIds cert = case getComponentStatus cert of
+            Just comps -> map (\(cid, _st) -> (ci2Manufacturer cid, ci2Model cid, ci2Serial cid)) comps
+            Nothing -> []
+          extractDeltaChanges cert = case getComponentStatus cert of
+            Just comps -> map (\(cid, st) -> ((ci2Manufacturer cid, ci2Model cid, ci2Serial cid), st)) comps
+            Nothing -> []
+          baseCompIds = extractCompIds baseCert
+          deltaChanges = map extractDeltaChanges deltaCerts
+
+      -- CHAIN-004: Holder reference validation
+      -- TODO: Extract actual holder serial from Delta certificate structure
+      -- For now, skip this check as holder extraction is not yet implemented
+      let chain004 = ChainCheckResult "CHAIN-004" Must
+            (Skip "Holder serial extraction not yet implemented")
+            "Each Delta must reference Base or preceding Delta as holder"
+
+      -- Run chain checks
+      let chain001 = checkChainIdentity baseIdentity deltaIdentities
+          chain002 = checkChainOrdering (baseSerial : deltaSerials)
+          chain003 = checkStateTransitions baseCompIds deltaChanges mode
+          finalState = computeFinalState baseCompIds deltaChanges
+          allChecks = [chain001, chain002, chain003, chain004]
+          allPassed = all (\r -> case ccrStatus r of { Pass -> True; Skip _ -> True; _ -> False }) allChecks
+
+      if jsonMode
+        then do
+          now <- getCurrentTime
+          -- Build a chain-specific JSON result
+          let chainResult = object
+                [ "base"       .= baseFile
+                , "deltaCount" .= length deltaFiles
+                , "mode"       .= complianceModeText mode
+                , "checks"     .= map chainCheckToValue allChecks
+                , "finalState" .= object
+                    [ "activeComponents" .= length (psComponents finalState)
+                    , "deltasApplied"    .= psDeltaCount finalState
+                    ]
+                , "compliant"  .= allPassed
+                ]
+              report = ComplianceReport
+                { crTool = "tcg-platform-cert-util"
+                , crVersion = "0.1.0"
+                , crCommand = "compliance --chain"
+                , crTimestamp = now
+                , crMode = mode
+                , crCertType = Nothing
+                , crSubject = Nothing
+                , crLayers = ReportLayers Nothing (Just chainResult)
+                , crCompliant = allPassed
+                , crOutputFile = Nothing
+                , crExitCode = if allPassed then 0 else 1
+                }
+          BC.putStrLn $ LBS.toStrict $ renderJsonReport report
+          when (not allPassed) exitFailure
+        else do
+          putStrLn "=========================================="
+          putStrLn "  Chain Compliance Results"
+          putStrLn "=========================================="
+          putStrLn ""
+          putStrLn $ "Base: " ++ baseFile
+          putStrLn $ "Deltas: " ++ show (length deltaFiles) ++ " certificate(s)"
+          putStrLn $ "Mode: " ++ T.unpack (complianceModeText mode)
+          putStrLn ""
+
+          forM_ allChecks $ \check -> do
+            let statusStr = case ccrStatus check of
+                  Pass -> "[PASS]"
+                  Fail reason -> "[FAIL] " ++ T.unpack reason
+                  Skip reason -> "[SKIP] " ++ T.unpack reason
+                  Error err' -> "[ERR]  " ++ T.unpack err'
+            putStrLn $ "  " ++ T.unpack (ccrCheckId check)
+                    ++ " (" ++ show (ccrLevel check) ++ ") "
+                    ++ statusStr
+            putStrLn $ "    " ++ T.unpack (ccrMessage check)
+
+          putStrLn ""
+          putStrLn $ "Final platform state: "
+                  ++ show (length (psComponents finalState)) ++ " active component(s)"
+                  ++ " after " ++ show (psDeltaCount finalState) ++ " delta(s)"
+          putStrLn ""
+
+          if allPassed
+            then do
+              putStrLn "  CHAIN COMPLIANT"
+              putStrLn "=========================================="
+            else do
+              putStrLn "  CHAIN NOT COMPLIANT"
+              putStrLn "=========================================="
+              exitFailure
+
+-- | Convert a chain check result to a JSON value.
+chainCheckToValue :: ChainCheckResult -> Value
+chainCheckToValue r = object
+  [ "checkId"  .= ccrCheckId r
+  , "level"    .= show (ccrLevel r)
+  , "status"   .= (case ccrStatus r of
+      Pass -> String "Pass"
+      Fail reason -> String ("Fail: " <> reason)
+      Skip reason -> String ("Skip: " <> reason)
+      Error err' -> String ("Error: " <> err'))
+  , "message"  .= ccrMessage r
+  ]
+
+-- ============================================================
+-- Lint command
+-- ============================================================
+
+-- | Options for the lint command
+optionsLint :: [OptDescr TCGOpts]
+optionsLint =
+  [ Option ['b'] ["base"] (ReqArg BaseCertificate "FILE") "base certificate (implies Delta config mode)"
+  , Option [] ["compat"]     (NoArg Compat)       "operational compatibility profile (default)"
+  , Option [] ["strict-v11"] (NoArg StrictV11Mode) "strict v1.1 profile"
+  , Option [] ["json"]       (NoArg JsonOutput)    "output results in JSON format"
+  , Option ['v'] ["verbose"] (NoArg Verbose)       "verbose output"
+  , Option ['h'] ["help"]    (NoArg Help)          "show help"
+  ]
+
+-- | Run config-level lint (Layer 1 only)
+doLint :: [TCGOpts] -> [String] -> IO ()
+doLint opts nonOpts = do
+  when (Help `elem` opts) $ do
+    putStrLn $ usageInfo "usage: tcg-platform-cert-util lint [options] <config-file>" optionsLint
+    exitSuccess
+
+  let configFile = case nonOpts of
+        (f:_) -> f
+        []    -> ""
+      jsonMode = JsonOutput `elem` opts
+      verbose = Verbose `elem` opts
+      strictV11 = StrictV11Mode `elem` opts
+      compMode = if strictV11 then StrictV11 else OperationalCompatibility
+      baseCertPath = listToMaybe [f | BaseCertificate f <- opts]
+
+  when (Compat `elem` opts && StrictV11Mode `elem` opts) $ do
+    putStrLn "Error: --compat and --strict-v11 cannot be used together."
+    exitFailure
+
+  when (null configFile) $ do
+    putStrLn "Error: no configuration file specified."
+    putStrLn "Usage: tcg-platform-cert-util lint [options] <config-file>"
+    exitFailure
+
+  case baseCertPath of
+    Nothing -> doLintBase configFile compMode jsonMode verbose
+    Just bp -> doLintDelta configFile bp compMode jsonMode verbose
+
+-- | Lint a Base Platform Certificate config
+doLintBase :: FilePath -> ComplianceMode -> Bool -> Bool -> IO ()
+doLintBase configFile compMode jsonMode verbose = do
+  configResult <- loadConfig configFile
+  case configResult of
+    Left err -> do
+      putStrLn $ "Error loading config: " ++ err
+      exitFailure
+    Right config -> do
+      let lintResults = lintPlatformConfig config
+      displayAndExitLint "Base" lintResults compMode jsonMode verbose
+
+-- | Lint a Delta Certificate config against a Base certificate
+doLintDelta :: FilePath -> FilePath -> ComplianceMode -> Bool -> Bool -> IO ()
+doLintDelta configFile baseCertPath compMode jsonMode verbose = do
+  configResult <- loadDeltaConfig configFile
+  case configResult of
+    Left err -> do
+      putStrLn $ "Error loading delta config: " ++ err
+      exitFailure
+    Right config -> do
+      -- Load base certificate
+      baseCertData <- B.readFile baseCertPath
+      case loadPEMCertificate baseCertData of
+        Left err -> do
+          putStrLn $ "Error loading base certificate: " ++ err
+          exitFailure
+        Right baseCert -> do
+          let lintResults = lintDeltaConfig config (Just baseCert)
+          displayAndExitLint "Delta" lintResults compMode jsonMode verbose
+
+-- | Display lint results and exit with appropriate code (shared by doLintBase/doLintDelta)
+displayAndExitLint :: String -> [ConfigLintResult] -> ComplianceMode -> Bool -> Bool -> IO ()
+displayAndExitLint label lintResults compMode jsonMode verbose = do
+  let hasFailures = any (\r -> clrStatus r == LintFail) lintResults
+      hasWarnings = any (\r -> clrStatus r == LintWarn) lintResults
+
+  if jsonMode
+    then do
+      now <- getCurrentTime
+      let report = buildLintReport "lint" compMode lintResults now
+      BC.putStrLn $ LBS.toStrict $ renderJsonReport report
+    else do
+      putStrLn "=========================================="
+      putStrLn $ "  Config Lint Results (" ++ label ++ ")"
+      putStrLn "=========================================="
+      putStrLn ""
+      if verbose
+        then displayLintResults lintResults
+        else displayLintResults [r | r <- lintResults, clrStatus r /= LintPass]
+      putStrLn ""
+
+      let passCount = length [r | r <- lintResults, clrStatus r == LintPass]
+          failCount = length [r | r <- lintResults, clrStatus r == LintFail]
+          warnCount = length [r | r <- lintResults, clrStatus r == LintWarn]
+      putStrLn $ "Total: " ++ show passCount ++ " passed, "
+                ++ show failCount ++ " failed, "
+                ++ show warnCount ++ " warnings"
+      putStrLn ""
+
+  -- M-14: Exit code respects ComplianceMode
+  case compMode of
+    StrictV11
+      | hasFailures || hasWarnings -> exitFailure
+      | otherwise -> return ()
+    OperationalCompatibility
+      | hasFailures -> exitFailure
+      | hasWarnings -> exitWith (ExitFailure 2)
+      | otherwise -> return ()
+
+-- | Load a PEM-encoded platform certificate
+loadPEMCertificate :: B.ByteString -> Either String SignedPlatformCertificate
+loadPEMCertificate pemData =
+  case pemParseBS pemData of
+    Left err -> Left $ "PEM parse error: " ++ err
+    Right [] -> Left "No PEM entries found"
+    Right (pem:_) -> decodeSignedPlatformCertificate (pemContent pem)
 
 -- | Usage information
 usage :: IO ()
@@ -702,6 +1163,8 @@ usage = do
   putStrLn "  show           : Display certificate information"
   putStrLn "  validate       : Validate a certificate"
   putStrLn "  components     : Show component information"
+  putStrLn "  compliance     : Run IWG Profile v1.1 compliance checks"
+  putStrLn "  lint           : Validate a YAML configuration file"
   putStrLn "  create-config  : Create example YAML configuration file"
   putStrLn "  convert        : Convert paccor JSON to YAML format"
   putStrLn "  help           : Show this help"
