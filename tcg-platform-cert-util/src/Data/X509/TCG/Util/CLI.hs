@@ -25,6 +25,7 @@ module Data.X509.TCG.Util.CLI
     doConvert,
     doCompliance,
     doLint,
+    doHwinfo,
     createExampleConfig,
 
     -- * Option Parsers
@@ -36,6 +37,7 @@ module Data.X509.TCG.Util.CLI
     optionsConvert,
     optionsCompliance,
     optionsLint,
+    optionsHwinfo,
 
     -- * Utility Functions
     extractOpt,
@@ -45,7 +47,7 @@ module Data.X509.TCG.Util.CLI
 where
 
 import Control.Monad (forM_, when)
-import Data.Aeson (Value(..), object, (.=))
+import Data.Aeson (Value(..), encode, object, (.=))
 import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
 import qualified Data.ByteString as B
@@ -67,6 +69,7 @@ import Data.X509.TCG.Util.Display
 import Data.X509.TCG.Util.PreIssuance (preIssuanceLintOnly, shouldBlockLint)
 import Data.X509.TCG.Util.JsonReport
 import Data.X509.TCG.Util.Paccor
+import qualified Data.X509.TCG.Util.HardwareCollector as HC
 import System.Console.GetOpt
 import System.Exit
 
@@ -102,6 +105,7 @@ data TCGOpts
     SkipCompliance
   | JsonOutput
   | ChainMode
+  | Detect
   deriving (Show, Eq)
 
 -- | Generate a new platform certificate
@@ -1151,6 +1155,84 @@ loadPEMCertificate pemData =
     Left err -> Left $ "PEM parse error: " ++ err
     Right [] -> Left "No PEM entries found"
     Right (pem:_) -> decodeSignedPlatformCertificate (pemContent pem)
+
+-- ============================================================
+-- hwinfo command
+-- ============================================================
+
+optionsHwinfo :: [OptDescr TCGOpts]
+optionsHwinfo =
+  [ Option [] ["json"]    (NoArg JsonOutput) "output results in JSON format"
+  , Option ['v'] ["verbose"] (NoArg Verbose) "verbose output (addresses, SMBIOS, TCG hex)"
+  , Option ['h'] ["help"]    (NoArg Help)    "show help"
+  ]
+
+doHwinfo :: [TCGOpts] -> [String] -> IO ()
+doHwinfo opts _ = do
+  when (Help `elem` opts) $ do
+    putStrLn $ usageInfo "usage: tcg-platform-cert-util hwinfo [options]" optionsHwinfo
+    putStrLn ""
+    putStrLn "Display hardware information from the current host."
+    putStrLn "Collects CPU, memory, storage, network, and other components."
+    exitSuccess
+
+  let jsonMode = JsonOutput `elem` opts
+      verbose  = Verbose `elem` opts
+
+  result <- HC.collectHardware
+  case result of
+    Left err -> do
+      putStrLn $ "Error collecting hardware info: " ++ show err
+      exitFailure
+    Right hw -> do
+      if jsonMode
+        then LBS.putStr (encode hw) >> putStrLn ""
+        else displayHardwareInfo verbose hw
+
+displayHardwareInfo :: Bool -> HC.HardwareInfo -> IO ()
+displayHardwareInfo verbose hw = do
+  let p = HC.hwPlatform hw
+  putStrLn "Platform:"
+  putStrLn $ "  Manufacturer: " ++ T.unpack (HC.platformManufacturer p)
+  putStrLn $ "  Model:        " ++ T.unpack (HC.platformModel p)
+  putStrLn $ "  Version:      " ++ T.unpack (HC.platformVersion p)
+  case HC.platformSerial p of
+    Just s  -> putStrLn $ "  Serial:       " ++ T.unpack s
+    Nothing -> return ()
+  when verbose $ do
+    case HC.platformUUID p of
+      Just u  -> putStrLn $ "  UUID:         " ++ T.unpack u
+      Nothing -> return ()
+    case HC.platformSKU p of
+      Just s  -> putStrLn $ "  SKU:          " ++ T.unpack s
+      Nothing -> return ()
+    case HC.platformFamily p of
+      Just f  -> putStrLn $ "  Family:       " ++ T.unpack f
+      Nothing -> return ()
+    case HC.hwSmbiosVersion hw of
+      Just v  -> putStrLn $ "  SMBIOS:       " ++ show (HC.smbiosMajor v) ++ "."
+                                               ++ show (HC.smbiosMinor v) ++ "."
+                                               ++ show (HC.smbiosRevision v)
+      Nothing -> return ()
+
+  let comps = HC.hwComponents hw
+  putStrLn ""
+  putStrLn $ "Components (" ++ show (length comps) ++ " found):"
+  forM_ comps $ \c -> do
+    let clsName = T.unpack (HC.componentClassName (HC.componentClass c))
+        mfr     = T.unpack (HC.componentManufacturer c)
+        mdl     = T.unpack (HC.componentModel c)
+        pad     = replicate (max 0 (20 - length clsName)) ' '
+    putStrLn $ "  [" ++ clsName ++ "]" ++ pad ++ mfr ++ " / " ++ mdl
+    when verbose $ do
+      case HC.componentSerial c of
+        Just s  -> putStrLn $ "                       Serial: " ++ T.unpack s
+        Nothing -> return ()
+      case HC.componentRevision c of
+        Just r  -> putStrLn $ "                       Revision: " ++ T.unpack r
+        Nothing -> return ()
+      forM_ (HC.componentAddresses c) $ \addr ->
+        putStrLn $ "                       Address: " ++ show addr
 
 -- | Usage information
 usage :: IO ()

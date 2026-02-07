@@ -21,7 +21,9 @@ module Data.X509.TCG.Util.HardwareCollector
   , HW.Component(..)
   , ComponentClass(..)
   , ComponentAddress(..)
+  , SmbiosVersion(..)
   , HardwareError(..)
+  , componentClassName
   ) where
 
 import Data.Text (Text)
@@ -34,10 +36,12 @@ import Data.HardwareInfo
   , PlatformInfo(..)
   , ComponentClass(..)
   , ComponentAddress(..)
+  , SmbiosVersion(..)
   , HardwareError(..)
   , getHardwareInfo
   , componentClassToTcgValue
   , tcgComponentClassRegistry
+  , componentClassName
   )
 import qualified Data.HardwareInfo as HW
 
