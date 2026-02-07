@@ -199,11 +199,11 @@ checkUriRefHash cert refDB = do
 
       -- Collect URIs from TBBSecurityAssertions
       tbbUris = case lookupAttributeByOID tcg_at_tbbSecurityAssertions (pciAttributes pci) of
-        Nothing -> []
+        Nothing -> Right []
         Just asn1Values ->
           case parseTBBSecurityAssertions asn1Values of
-            Left _ -> []
-            Right tbb -> concat
+            Left err -> Left $ "Failed to parse TBBSecurityAssertions: " <> err
+            Right tbb -> Right $ concat
               [ maybe [] (\u -> [("TBB.profileUri", u)]) (ptbbCcInfo tbb >>= pccProfileUri)
               , maybe [] (\u -> [("TBB.targetUri", u)]) (ptbbCcInfo tbb >>= pccTargetUri)
               ]
@@ -213,11 +213,11 @@ checkUriRefHash cert refDB = do
         let mConfig = lookupAttributeByOID tcg_at_platformConfiguration_v2 (pciAttributes pci)
                   <|> lookupAttributeByOID tcg_at_platformConfiguration (pciAttributes pci)
         in case mConfig of
-             Nothing -> []
+             Nothing -> Right []
              Just asn1Values ->
                case parsePlatformConfiguration asn1Values of
-                 Left _ -> []
-                 Right cfg -> concat
+                 Left err -> Left $ "Failed to parse PlatformConfiguration: " <> err
+                 Right cfg -> Right $ concat
                    [ maybe [] (\u -> [("PlatformConfig.componentIdentifiersUri", u)]) (ppcComponentsUri cfg)
                    , maybe [] (\u -> [("PlatformConfig.platformPropertiesUri", u)]) (ppcPropertiesUri cfg)
                    -- Collect componentPlatformCertUri from each component
@@ -226,17 +226,20 @@ checkUriRefHash cert refDB = do
                      ) (zip [0::Int ..] (ppcComponents cfg))
                    ]
 
-      allUris = tbbUris ++ platformConfigUris
-
       firstError [] = Nothing
       firstError ((label, u):rest) =
         case validateUriRef label u of
           Left err -> Just err
           Right () -> firstError rest
 
-  if null allUris
-    then mkSkip cid "URIReference hash requirements" ref
-           "No URIReference fields present"
-    else case firstError allUris of
-           Nothing -> mkPass cid "URIReference hash requirements satisfied" ref
-           Just err -> mkFail cid "URIReference hash requirements" ref err
+  case (tbbUris, platformConfigUris) of
+    (Left err, _) -> mkFail cid "URIReference hash requirements" ref err
+    (_, Left err) -> mkFail cid "URIReference hash requirements" ref err
+    (Right tUris, Right pUris) ->
+      let allUris = tUris ++ pUris
+      in if null allUris
+           then mkSkip cid "URIReference hash requirements" ref
+                  "No URIReference fields present"
+           else case firstError allUris of
+                  Nothing -> mkPass cid "URIReference hash requirements satisfied" ref
+                  Just err -> mkFail cid "URIReference hash requirements" ref err

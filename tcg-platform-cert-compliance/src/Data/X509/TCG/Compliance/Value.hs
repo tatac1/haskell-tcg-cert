@@ -90,8 +90,9 @@ import Data.X509.TCG.Compliance.Reference
 import Data.X509.TCG.Compliance.Result
 import Data.X509.TCG.Compliance.Internal (lookupRef, ComplianceCheck)
 
+-- | STRMAX per IWG Profile §2.2: UTF8String (SIZE (1..255))
 strMax :: Int
-strMax = 256
+strMax = 255
 
 uriMax :: Int
 uriMax = 1024

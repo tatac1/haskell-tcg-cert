@@ -427,10 +427,9 @@ parseCertificateIdentifier xs = do
   content <- stripSequenceOrContent xs
   parseCertificateIdentifierContent content
 
--- | STRMAX constant per IWG Profile (lines 604, 610-611)
--- UTF8String SIZE (1..STRMAX) where STRMAX = 256
+-- | STRMAX per IWG Profile §2.2: UTF8String (SIZE (1..255))
 strMax :: Int
-strMax = 256
+strMax = 255
 
 parseComponentAddresses :: [ASN1] -> Either Text [ParsedAddress]
 parseComponentAddresses content = do

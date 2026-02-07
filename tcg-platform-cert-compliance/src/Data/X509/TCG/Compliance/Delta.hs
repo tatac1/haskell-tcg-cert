@@ -78,6 +78,7 @@ import Data.X509.TCG.OID
 import Data.X509.TCG.Utils (lookupAttributeByOID)
 import Data.ASN1.Types (ASN1(..), OID)
 import Data.ASN1.Types.String (ASN1StringEncoding(..))
+import qualified Data.Text.Encoding as TE
 
 import Data.X509.TCG.Compliance.Types
 import Data.X509.TCG.Compliance.ASN1
@@ -99,15 +100,28 @@ withRequirement lvl ref = ref { srLevel = lvl }
 tshow :: Show a => a -> T.Text
 tshow = T.pack . show
 
+-- | STRMAX per IWG Profile §2.2: UTF8String (SIZE (1..255))
+strMax :: Int
+strMax = 255
+
 requireUtf8String :: T.Text -> ASN1 -> Either T.Text B.ByteString
 requireUtf8String label val =
   case val of
-    OctetString bs -> Right bs
+    OctetString bs -> validateUtf8Bytes label bs
     _ ->
       case asn1StringValue val of
-        Just (UTF8, bs) -> Right bs
+        Just (UTF8, bs) -> validateUtf8Bytes label bs
         Just (enc, _) -> Left $ label <> ": expected UTF8String or OctetString, got " <> T.pack (show enc)
         Nothing -> Left $ label <> ": expected UTF8String or OctetString"
+
+validateUtf8Bytes :: T.Text -> B.ByteString -> Either T.Text B.ByteString
+validateUtf8Bytes label bs =
+  case TE.decodeUtf8' bs of
+    Left _ -> Left $ label <> ": invalid UTF-8 encoding"
+    Right _ ->
+      if B.length bs >= 1 && B.length bs <= strMax
+        then Right bs
+        else Left $ label <> ": UTF8String length out of range (1.." <> tshow strMax <> ")"
 
 lookupNameAttrValues :: SignedPlatformCertificate -> [OID] -> Either T.Text (Maybe [ASN1])
 lookupNameAttrValues cert oids = do

@@ -130,7 +130,7 @@ checkSubjectAltNames cert refDB = do
       ref = lookupRef cid refDB
       pci = getPlatformCertificate cert
       Extensions mexts = pciExtensions pci
-      strMax = 256
+      strMax = 255  -- STRMAX per IWG Profile §2.2
   case mexts of
     Nothing -> mkFail cid "Subject Alternative Names extension" ref
                  "No extensions present"

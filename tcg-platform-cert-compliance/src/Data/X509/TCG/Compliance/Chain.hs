@@ -93,7 +93,7 @@ checkAuthorityKeyId cert refDB = do
                         else mkPass cid "Authority Key Identifier present and valid" ref
         Nothing ->
           mkSkip cid "Authority Key Identifier" ref
-            "Authority Key Identifier extension not present (optional)"
+            "Authority Key Identifier extension not present (recommended per IWG Profile §3.2.11)"
 
 -- | CHN-002: Authority Info Access extension
 -- Reference: IWG Profile §3.2.12, line 1253

@@ -69,6 +69,7 @@ test-suite test-tcg-platform-cert-compliance
         ComplianceGuideSpec
         SuggestionSpec
         ChainComplianceSpec
+        ComplianceCheckSpec
     build-depends:
         base >= 4.9 && < 5
       , bytestring

@@ -11,6 +11,7 @@ import qualified SBVProofs
 import qualified ComplianceGuideSpec
 import qualified SuggestionSpec
 import qualified ChainComplianceSpec
+import qualified ComplianceCheckSpec
 
 main :: IO ()
 main = defaultMain tests
@@ -23,4 +24,5 @@ tests = testGroup "TCG Platform Cert Compliance Tests"
   , ComplianceGuideSpec.tests
   , SuggestionSpec.tests
   , ChainComplianceSpec.tests
+  , ComplianceCheckSpec.tests
   ]
