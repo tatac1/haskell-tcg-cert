@@ -27,24 +27,24 @@ module Data.HardwareInfo.Linux.Pci
   ) where
 
 import Control.Exception (try, SomeException)
-import Control.Monad (forM, filterM)
+import Control.Monad (filterM, forM)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Data.Word (Word16)
-import System.Directory (listDirectory, doesFileExist)
+import Data.Word (Word16, Word32)
+import System.Directory (listDirectory, doesFileExist, doesDirectoryExist)
 import System.FilePath ((</>))
-import Text.Read (readMaybe)
 import Numeric (readHex)
 
 import Data.HardwareInfo.Types
+import Data.HardwareInfo.Linux.PciIds (lookupVendorById, lookupDeviceById)
 
 -- | PCI device information
 data PciDevice = PciDevice
   { pciSlot       :: !Text        -- ^ PCI slot (e.g., "0000:00:02.0")
   , pciVendorId   :: !Word16      -- ^ Vendor ID
   , pciDeviceId   :: !Word16      -- ^ Device ID
-  , pciClassCode  :: !Word16      -- ^ Class code (high 16 bits)
+  , pciClassCode  :: !Word32      -- ^ Class code (24-bit, e.g. 0x030000)
   , pciVendorName :: !Text        -- ^ Vendor name (if available)
   , pciDeviceName :: !Text        -- ^ Device name (if available)
   , pciSubsystem  :: !(Maybe Text) -- ^ Subsystem info
@@ -79,32 +79,41 @@ data PciClass
 pciDevicesPath :: FilePath
 pciDevicesPath = "/sys/bus/pci/devices"
 
--- | Get all PCI devices
+-- | Get all PCI devices (excludes SR-IOV virtual functions)
 getPciDevices :: IO [PciDevice]
 getPciDevices = do
   result <- try $ listDirectory pciDevicesPath
   case result of
     Left (_ :: SomeException) -> return []
     Right slots -> do
-      devices <- forM slots $ \slot -> do
+      -- Filter out SR-IOV Virtual Functions (they have a 'physfn' symlink)
+      physicalSlots <- filterM (fmap not . isVirtualFunction) slots
+      devices <- forM physicalSlots $ \slot -> do
         let slotPath = pciDevicesPath </> slot
         mDev <- readPciDevice (T.pack slot) slotPath
         return mDev
       return [d | Just d <- devices]
 
+-- | Check if a PCI device is an SR-IOV Virtual Function
+-- VFs have a 'physfn' symlink pointing to their parent Physical Function
+isVirtualFunction :: String -> IO Bool
+isVirtualFunction slot = do
+  let physfnPath = pciDevicesPath </> slot </> "physfn"
+  doesDirectoryExist physfnPath  -- physfn is a symlink to a PCI device directory
+
 -- | Read PCI device information from sysfs
 readPciDevice :: Text -> FilePath -> IO (Maybe PciDevice)
 readPciDevice slot slotPath = do
-  vendorResult <- readSysfsHex (slotPath </> "vendor")
-  deviceResult <- readSysfsHex (slotPath </> "device")
-  classResult <- readSysfsHex (slotPath </> "class")
+  vendorResult <- readSysfsHex16 (slotPath </> "vendor")
+  deviceResult <- readSysfsHex16 (slotPath </> "device")
+  classResult <- readSysfsHex32 (slotPath </> "class")
 
   case (vendorResult, deviceResult, classResult) of
     (Just vendor, Just device, Just classCode) -> do
       -- Try to read additional info
       revision <- readSysfsText (slotPath </> "revision")
-      subsystemVendor <- readSysfsHex (slotPath </> "subsystem_vendor")
-      subsystemDevice <- readSysfsHex (slotPath </> "subsystem_device")
+      subsystemVendor <- readSysfsHex16 (slotPath </> "subsystem_vendor")
+      subsystemDevice <- readSysfsHex16 (slotPath </> "subsystem_device")
 
       let subsys = case (subsystemVendor, subsystemDevice) of
                      (Just sv, Just sd) -> Just $ T.pack $
@@ -115,17 +124,17 @@ readPciDevice slot slotPath = do
         { pciSlot = slot
         , pciVendorId = vendor
         , pciDeviceId = device
-        , pciClassCode = fromIntegral (classCode `div` 0x100)  -- High 16 bits
-        , pciVendorName = lookupVendorName vendor
-        , pciDeviceName = ""  -- Would need pci.ids database
+        , pciClassCode = classCode  -- Full 24-bit class code (e.g. 0x030000)
+        , pciVendorName = lookupVendorById vendor
+        , pciDeviceName = lookupDeviceById vendor device
         , pciSubsystem = subsys
         , pciRevision = revision
         }
     _ -> return Nothing
 
--- | Read hex value from sysfs file
-readSysfsHex :: FilePath -> IO (Maybe Word16)
-readSysfsHex path = do
+-- | Read 16-bit hex value from sysfs file (for vendor/device IDs)
+readSysfsHex16 :: FilePath -> IO (Maybe Word16)
+readSysfsHex16 path = do
   exists <- doesFileExist path
   if not exists
     then return Nothing
@@ -135,11 +144,27 @@ readSysfsHex path = do
         Left (_ :: SomeException) -> return Nothing
         Right content ->
           let stripped = T.strip content
-              -- Remove "0x" prefix if present
               hexStr = if "0x" `T.isPrefixOf` stripped
                          then T.drop 2 stripped
                          else stripped
-          in return $ parseHex (T.unpack hexStr)
+          in return $ parseHex16 (T.unpack hexStr)
+
+-- | Read 32-bit hex value from sysfs file (for PCI class codes)
+readSysfsHex32 :: FilePath -> IO (Maybe Word32)
+readSysfsHex32 path = do
+  exists <- doesFileExist path
+  if not exists
+    then return Nothing
+    else do
+      result <- try $ TIO.readFile path
+      case result of
+        Left (_ :: SomeException) -> return Nothing
+        Right content ->
+          let stripped = T.strip content
+              hexStr = if "0x" `T.isPrefixOf` stripped
+                         then T.drop 2 stripped
+                         else stripped
+          in return $ parseHex32 (T.unpack hexStr)
 
 -- | Read text from sysfs file
 readSysfsText :: FilePath -> IO (Maybe Text)
@@ -155,9 +180,15 @@ readSysfsText path = do
           let stripped = T.strip content
           in if T.null stripped then return Nothing else return $ Just stripped
 
--- | Parse hex string
-parseHex :: String -> Maybe Word16
-parseHex s = case readHex s of
+-- | Parse hex string to Word16
+parseHex16 :: String -> Maybe Word16
+parseHex16 s = case readHex s of
+  [(v, "")] -> Just (fromIntegral (v :: Integer))
+  _ -> Nothing
+
+-- | Parse hex string to Word32
+parseHex32 :: String -> Maybe Word32
+parseHex32 s = case readHex s of
   [(v, "")] -> Just (fromIntegral (v :: Integer))
   _ -> Nothing
 
@@ -170,9 +201,10 @@ formatHex v = let s = showHex' v ""
     showHex' n acc = showHex' (n `div` 16) (hexDigit (n `mod` 16) : acc)
     hexDigit d = "0123456789abcdef" !! fromIntegral d
 
--- | Get PCI class from class code
-getPciClass :: Word16 -> PciClass
-getPciClass code = case code `div` 0x100 of
+-- | Get PCI class from full 24-bit class code (e.g. 0x030000)
+-- Extracts the base class (high byte) for classification
+getPciClass :: Word32 -> PciClass
+getPciClass code = case code `div` 0x10000 of
   0x01 -> PciClassStorage
   0x02 -> PciClassNetwork
   0x03 -> PciClassDisplay
@@ -194,6 +226,10 @@ getPciClass code = case code `div` 0x100 of
   0xFF -> PciClassOther
   _    -> PciClassUnknown
 
+-- | Get PCI subclass from full 24-bit class code (e.g. 0x010600 -> 0x06)
+getPciSubclass :: Word32 -> Word32
+getPciSubclass code = (code `div` 0x100) `mod` 0x100
+
 -- | Get GPU devices (Display Controllers)
 getGpuDevices :: IO [Component]
 getGpuDevices = do
@@ -206,8 +242,7 @@ getGpuDevices = do
     gpuToComponent dev = Component
       { componentClass = ClassGPU
       , componentManufacturer = pciVendorName dev
-      , componentModel = T.pack $ "GPU [" ++ formatHex (pciVendorId dev) ++ ":"
-                                  ++ formatHex (pciDeviceId dev) ++ "]"
+      , componentModel = deviceModelName "GPU" dev
       , componentSerial = Nothing
       , componentRevision = pciRevision dev
       , componentFieldReplaceable = Just True
@@ -224,7 +259,7 @@ getStorageControllers = do
     isStorage dev = getPciClass (pciClassCode dev) == PciClassStorage
 
     storageToComponent dev =
-      let subclass = (pciClassCode dev) `mod` 0x100
+      let subclass = getPciSubclass (pciClassCode dev)
           cls = case subclass of
                   0x01 -> ClassSCSIController   -- SCSI
                   0x04 -> ClassRAIDController   -- RAID
@@ -236,9 +271,7 @@ getStorageControllers = do
       in Component
         { componentClass = cls
         , componentManufacturer = pciVendorName dev
-        , componentModel = T.pack $ "Storage Controller ["
-                            ++ formatHex (pciVendorId dev) ++ ":"
-                            ++ formatHex (pciDeviceId dev) ++ "]"
+        , componentModel = deviceModelName "Storage Controller" dev
         , componentSerial = Nothing
         , componentRevision = pciRevision dev
         , componentFieldReplaceable = Just True
@@ -257,9 +290,7 @@ getNetworkControllers = do
     networkToComponent dev = Component
       { componentClass = ClassEthernetController
       , componentManufacturer = pciVendorName dev
-      , componentModel = T.pack $ "Network Controller ["
-                          ++ formatHex (pciVendorId dev) ++ ":"
-                          ++ formatHex (pciDeviceId dev) ++ "]"
+      , componentModel = deviceModelName "Network Controller" dev
       , componentSerial = Nothing
       , componentRevision = pciRevision dev
       , componentFieldReplaceable = Just True
@@ -275,14 +306,12 @@ getUsbControllers = do
   where
     -- Serial Bus Controller (0x0C) with USB subclass (0x03)
     isUsb dev = getPciClass (pciClassCode dev) == PciClassSerial &&
-                (pciClassCode dev `mod` 0x100) == 0x03
+                getPciSubclass (pciClassCode dev) == 0x03
 
     usbToComponent dev = Component
       { componentClass = ClassUSBController
       , componentManufacturer = pciVendorName dev
-      , componentModel = T.pack $ "USB Controller ["
-                          ++ formatHex (pciVendorId dev) ++ ":"
-                          ++ formatHex (pciDeviceId dev) ++ "]"
+      , componentModel = deviceModelName "USB Controller" dev
       , componentSerial = Nothing
       , componentRevision = pciRevision dev
       , componentFieldReplaceable = Just False
@@ -299,7 +328,7 @@ getAudioControllers = do
     isAudio dev = getPciClass (pciClassCode dev) == PciClassMultimedia
 
     audioToComponent dev =
-      let subclass = (pciClassCode dev) `mod` 0x100
+      let subclass = getPciSubclass (pciClassCode dev)
           -- Subclasses: 0x00=Video, 0x01=Audio, 0x02=Telephony, 0x03=HDAudio
           cls = case subclass of
                   0x01 -> ClassAudioController
@@ -308,9 +337,7 @@ getAudioControllers = do
       in Component
         { componentClass = cls
         , componentManufacturer = pciVendorName dev
-        , componentModel = T.pack $ "Audio Controller ["
-                            ++ formatHex (pciVendorId dev) ++ ":"
-                            ++ formatHex (pciDeviceId dev) ++ "]"
+        , componentModel = deviceModelName "Audio Controller" dev
         , componentSerial = Nothing
         , componentRevision = pciRevision dev
         , componentFieldReplaceable = Just False
@@ -337,9 +364,7 @@ getAccelerators = do
     accelToComponent dev = Component
       { componentClass = ClassDPU  -- DPU: closest TCG match for accelerators
       , componentManufacturer = pciVendorName dev
-      , componentModel = T.pack $ "Processing Accelerator ["
-                          ++ formatHex (pciVendorId dev) ++ ":"
-                          ++ formatHex (pciDeviceId dev) ++ "]"
+      , componentModel = deviceModelName "Processing Accelerator" dev
       , componentSerial = Nothing
       , componentRevision = pciRevision dev
       , componentFieldReplaceable = Just True
@@ -364,41 +389,23 @@ getEncryptionControllers = do
     cryptoToComponent dev = Component
       { componentClass = ClassGeneralController  -- No specific TCG class for crypto
       , componentManufacturer = pciVendorName dev
-      , componentModel = T.pack $ "Encryption Controller ["
-                          ++ formatHex (pciVendorId dev) ++ ":"
-                          ++ formatHex (pciDeviceId dev) ++ "]"
+      , componentModel = deviceModelName "Encryption Controller" dev
       , componentSerial = Nothing
       , componentRevision = pciRevision dev
       , componentFieldReplaceable = Just False
       , componentAddresses = [PCIAddress (pciSlot dev)]
       }
 
--- | Lookup vendor name from vendor ID
--- This is a simplified lookup for common vendors
-lookupVendorName :: Word16 -> Text
-lookupVendorName vid = case vid of
-  0x1002 -> "AMD/ATI"
-  0x10DE -> "NVIDIA"
-  0x8086 -> "Intel"
-  0x1022 -> "AMD"
-  0x14E4 -> "Broadcom"
-  0x10EC -> "Realtek"
-  0x1B4B -> "Marvell"
-  0x1000 -> "LSI Logic"
-  0x15B3 -> "Mellanox"
-  0x1969 -> "Qualcomm Atheros"
-  0x168C -> "Qualcomm Atheros"
-  0x144D -> "Samsung"
-  0x1179 -> "Toshiba"
-  0x1C5C -> "SK hynix"
-  0x126F -> "Silicon Motion"
-  0x1987 -> "Phison"
-  0x1CC1 -> "ADATA"
-  0x15B7 -> "SanDisk/WD"
-  0x2646 -> "Kingston"
-  0x1E0F -> "KIOXIA"
-  0x025E -> "Solidigm"
-  _      -> ""
+-- | Build a model name for a PCI device.
+-- Uses pci.ids device name if available, falls back to "Category [vid:did]"
+deviceModelName :: Text -> PciDevice -> Text
+deviceModelName category dev =
+  let devName = pciDeviceName dev
+      hexId = T.pack $ formatHex (pciVendorId dev) ++ ":"
+                        ++ formatHex (pciDeviceId dev)
+  in if T.null devName
+       then category <> " [" <> hexId <> "]"
+       else devName
 
 #else
 -- Non-Linux stub
@@ -416,14 +423,14 @@ module Data.HardwareInfo.Linux.Pci
   ) where
 
 import Data.Text (Text)
-import Data.Word (Word16)
+import Data.Word (Word16, Word32)
 import Data.HardwareInfo.Types
 
 data PciDevice = PciDevice
   { pciSlot       :: !Text
   , pciVendorId   :: !Word16
   , pciDeviceId   :: !Word16
-  , pciClassCode  :: !Word16
+  , pciClassCode  :: !Word32
   , pciVendorName :: !Text
   , pciDeviceName :: !Text
   , pciSubsystem  :: !(Maybe Text)

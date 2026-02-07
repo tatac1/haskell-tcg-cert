@@ -21,11 +21,11 @@ import Control.Exception (try, SomeException)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import System.Directory (doesDirectoryExist, listDirectory, doesFileExist)
-import System.FilePath ((</>), takeFileName)
-import System.Posix.Files (readSymbolicLink)
+import System.Directory (doesDirectoryExist, listDirectory, doesFileExist, canonicalizePath)
+import System.FilePath ((</>), takeFileName, takeDirectory)
 
 import Data.HardwareInfo.Types
+import Data.HardwareInfo.Linux.PciIds (lookupVendorByIdText)
 
 -- | Bluetooth device information
 data BluetoothDevice = BluetoothDevice
@@ -59,8 +59,8 @@ readBluetoothDevice :: String -> IO (Maybe BluetoothDevice)
 readBluetoothDevice deviceName = do
   let devPath = bluetoothPath </> deviceName
 
-  -- Read device address
-  address <- readSysfsFile (devPath </> "address")
+  -- Read device address (try sysfs first, then debugfs as fallback)
+  address <- readBluetoothAddress deviceName devPath
 
   -- Get manufacturer from PCI device info
   (manufacturer, pciAddr) <- getBluetoothManufacturer devPath
@@ -76,21 +76,69 @@ readBluetoothDevice deviceName = do
     , btPciAddress = pciAddr
     }
 
--- | Get manufacturer info by following device symlinks to PCI device
+-- | Read Bluetooth MAC address
+-- Tries sysfs 'address' file first, falls back to debugfs identity (requires root)
+readBluetoothAddress :: String -> FilePath -> IO (Maybe Text)
+readBluetoothAddress deviceName devPath = do
+  -- Try sysfs first
+  sysfsAddr <- readSysfsFile (devPath </> "address")
+  case sysfsAddr of
+    Just addr | isValidBtAddress addr -> return (Just addr)
+    _ -> do
+      -- Fall back to debugfs (requires root)
+      let debugPath = "/sys/kernel/debug/bluetooth" </> deviceName </> "identity"
+      debugAddr <- readSysfsFile debugPath
+      case debugAddr of
+        Just raw ->
+          -- Format: "14:14:16:03:8e:73 (type 0) ..."
+          let addr = T.strip $ head' $ T.splitOn " " raw
+          in if isValidBtAddress addr then return (Just addr) else return Nothing
+        Nothing -> return Nothing
+  where
+    head' (x:_) = x
+    head' []    = ""
+    isValidBtAddress addr =
+      T.length addr == 17 &&
+      addr /= "00:00:00:00:00:00"
+
+-- | Get manufacturer info by following device symlinks to PCI or USB device
 getBluetoothManufacturer :: FilePath -> IO (Text, Maybe Text)
 getBluetoothManufacturer devPath = do
-  -- Follow the device symlink to find the parent PCI device
+  -- Resolve the real path of the device symlink
   let deviceLink = devPath </> "device"
-  result <- try $ readSymbolicLink deviceLink
-  case result of
-    Left (_ :: SomeException) -> return ("", Nothing)
-    Right target -> do
-      -- Walk up the device tree to find PCI device
-      findPciParent (resolveRelativePath devPath target)
+  linkExists <- doesDirectoryExist deviceLink
+  if not linkExists
+    then return ("", Nothing)
+    else do
+      realPath <- try $ canonicalizePath deviceLink
+      case realPath of
+        Left (_ :: SomeException) -> return ("", Nothing)
+        Right resolved -> do
+          -- First try USB parent (common for BT adapters)
+          usbResult <- tryUsbParent resolved
+          case usbResult of
+            (mfr, _) | not (T.null mfr) -> return usbResult
+            -- Fall back to PCI parent
+            _ -> findPciParent resolved
   where
+    -- | Try to get manufacturer from USB parent device
+    -- USB interfaces (e.g., .../5-1:1.0) have parent USB device (e.g., .../5-1)
+    tryUsbParent :: FilePath -> IO (Text, Maybe Text)
+    tryUsbParent path = do
+      let parentPath = takeDirectory path
+      mfr <- readSysfsFile (parentPath </> "manufacturer")
+      case mfr of
+        Just m -> do
+          addr <- readSysfsFile (parentPath </> "serial")
+          -- Filter out obviously invalid serials (all zeros)
+          let validAddr = case addr of
+                Just a | T.all (\c -> c == '0') a -> Nothing
+                other -> other
+          return (m, validAddr)
+        Nothing -> return ("", Nothing)
+
     findPciParent :: FilePath -> IO (Text, Maybe Text)
     findPciParent path = do
-      -- Check if this is a PCI device by looking for vendor file
       let vendorPath = path </> "vendor"
       hasVendor <- doesFileExist vendorPath
       if hasVendor
@@ -102,59 +150,15 @@ getBluetoothManufacturer devPath = do
                 Nothing -> ""
           return (vendorName, Just pciAddr)
         else do
-          -- Try parent directory
-          let parent = takeDirectory' path
+          let parent = takeDirectory path
           if parent == path || parent == "/"
             then return ("", Nothing)
             else findPciParent parent
 
-    takeDirectory' :: FilePath -> FilePath
-    takeDirectory' p =
-      let parts = filter (not . null) $ splitOn '/' p
-      in if length parts <= 1
-           then "/"
-           else "/" ++ foldr1 (\a b -> a ++ "/" ++ b) (init parts)
-
-    splitOn :: Char -> String -> [String]
-    splitOn c s = case break (== c) s of
-      (a, [])   -> [a]
-      (a, _:bs) -> a : splitOn c bs
-
--- | Resolve a relative path
-resolveRelativePath :: FilePath -> FilePath -> FilePath
-resolveRelativePath base relPath = go (splitPath base) (splitPath relPath)
-  where
-    splitPath = filter (not . null) . splitOn '/'
-    splitOn c s = case break (== c) s of
-      (a, [])   -> [a]
-      (a, _:bs) -> a : splitOn c bs
-
-    go baseComps [] = joinPath baseComps
-    go [] relComps = joinPath relComps
-    go (_:bs) ("..":rs) = go bs rs
-    go bs (r:rs) = go (bs ++ [r]) rs
-
-    joinPath [] = "/"
-    joinPath ps = "/" ++ foldr1 (\a b -> a ++ "/" ++ b) ps
-
 -- | Lookup Bluetooth vendor name from PCI vendor ID
+-- Uses the pci.ids database (embedded + runtime fallback)
 lookupBluetoothVendor :: Text -> Text
-lookupBluetoothVendor vendorId =
-  case T.toLower vendorId of
-    "0x8086" -> "Intel Corporation"
-    "0x8087" -> "Intel Corporation"
-    "0x10ec" -> "Realtek Semiconductor Co., Ltd."
-    "0x0cf3" -> "Qualcomm Atheros"
-    "0x168c" -> "Qualcomm Atheros"
-    "0x14e4" -> "Broadcom Inc."
-    "0x0a5c" -> "Broadcom Inc."
-    "0x13d3" -> "IMC Networks"
-    "0x0bda" -> "Realtek Semiconductor Co., Ltd."
-    "0x04ca" -> "Lite-On Technology Corp."
-    "0x0489" -> "Foxconn / Hon Hai"
-    "0x413c" -> "Dell"
-    "0x0930" -> "Toshiba Corp."
-    _ -> ""
+lookupBluetoothVendor = lookupVendorByIdText
 
 -- | Read a sysfs file safely
 readSysfsFile :: FilePath -> IO (Maybe Text)
@@ -185,12 +189,9 @@ toComponent dev = Component
     buildAddresses :: BluetoothDevice -> [ComponentAddress]
     buildAddresses d =
       let btAddr = case btAddress d of
-                     Just addr -> [BluetoothMAC addr]
+                     Just addr -> [BluetoothMAC (T.toUpper addr)]
                      Nothing -> []
-          pciAddr = case btPciAddress d of
-                      Just p -> [PCIAddress p]
-                      Nothing -> []
-      in btAddr ++ pciAddr
+      in btAddr
 
 #else
 -- Non-Linux stub
