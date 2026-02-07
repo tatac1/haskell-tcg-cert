@@ -25,6 +25,8 @@ module Data.X509.TCG.Util.CLI
     doConvert,
     doCompliance,
     doLint,
+    doHwinfo,
+    doCreateConfig,
     createExampleConfig,
 
     -- * Option Parsers
@@ -36,6 +38,8 @@ module Data.X509.TCG.Util.CLI
     optionsConvert,
     optionsCompliance,
     optionsLint,
+    optionsHwinfo,
+    optionsCreateConfig,
 
     -- * Utility Functions
     extractOpt,
@@ -45,7 +49,7 @@ module Data.X509.TCG.Util.CLI
 where
 
 import Control.Monad (forM_, when)
-import Data.Aeson (Value(..), object, (.=))
+import Data.Aeson (Value(..), encode, object, (.=))
 import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
 import qualified Data.ByteString as B
@@ -67,6 +71,8 @@ import Data.X509.TCG.Util.Display
 import Data.X509.TCG.Util.PreIssuance (preIssuanceLintOnly, shouldBlockLint)
 import Data.X509.TCG.Util.JsonReport
 import Data.X509.TCG.Util.Paccor
+import qualified Data.X509.TCG.Util.HardwareCollector as HC
+import qualified Data.Yaml as Yaml
 import System.Console.GetOpt
 import System.Exit
 
@@ -102,6 +108,7 @@ data TCGOpts
     SkipCompliance
   | JsonOutput
   | ChainMode
+  | Detect
   deriving (Show, Eq)
 
 -- | Generate a new platform certificate
@@ -1152,6 +1159,139 @@ loadPEMCertificate pemData =
     Right [] -> Left "No PEM entries found"
     Right (pem:_) -> decodeSignedPlatformCertificate (pemContent pem)
 
+-- ============================================================
+-- hwinfo command
+-- ============================================================
+
+optionsHwinfo :: [OptDescr TCGOpts]
+optionsHwinfo =
+  [ Option [] ["json"]    (NoArg JsonOutput) "output results in JSON format"
+  , Option ['v'] ["verbose"] (NoArg Verbose) "verbose output (addresses, SMBIOS, TCG hex)"
+  , Option ['h'] ["help"]    (NoArg Help)    "show help"
+  ]
+
+doHwinfo :: [TCGOpts] -> [String] -> IO ()
+doHwinfo opts _ = do
+  when (Help `elem` opts) $ do
+    putStrLn $ usageInfo "usage: tcg-platform-cert-util hwinfo [options]" optionsHwinfo
+    putStrLn ""
+    putStrLn "Display hardware information from the current host."
+    putStrLn "Collects CPU, memory, storage, network, and other components."
+    exitSuccess
+
+  let jsonMode = JsonOutput `elem` opts
+      verbose  = Verbose `elem` opts
+
+  result <- HC.collectHardware
+  case result of
+    Left err -> do
+      putStrLn $ "Error collecting hardware info: " ++ show err
+      exitFailure
+    Right hw -> do
+      if jsonMode
+        then LBS.putStr (encode hw) >> putStrLn ""
+        else displayHardwareInfo verbose hw
+
+displayHardwareInfo :: Bool -> HC.HardwareInfo -> IO ()
+displayHardwareInfo verbose hw = do
+  let p = HC.hwPlatform hw
+  putStrLn "Platform:"
+  putStrLn $ "  Manufacturer: " ++ T.unpack (HC.platformManufacturer p)
+  putStrLn $ "  Model:        " ++ T.unpack (HC.platformModel p)
+  putStrLn $ "  Version:      " ++ T.unpack (HC.platformVersion p)
+  case HC.platformSerial p of
+    Just s  -> putStrLn $ "  Serial:       " ++ T.unpack s
+    Nothing -> return ()
+  when verbose $ do
+    case HC.platformUUID p of
+      Just u  -> putStrLn $ "  UUID:         " ++ T.unpack u
+      Nothing -> return ()
+    case HC.platformSKU p of
+      Just s  -> putStrLn $ "  SKU:          " ++ T.unpack s
+      Nothing -> return ()
+    case HC.platformFamily p of
+      Just f  -> putStrLn $ "  Family:       " ++ T.unpack f
+      Nothing -> return ()
+    case HC.hwSmbiosVersion hw of
+      Just v  -> putStrLn $ "  SMBIOS:       " ++ show (HC.smbiosMajor v) ++ "."
+                                               ++ show (HC.smbiosMinor v) ++ "."
+                                               ++ show (HC.smbiosRevision v)
+      Nothing -> return ()
+
+  let comps = HC.hwComponents hw
+  putStrLn ""
+  putStrLn $ "Components (" ++ show (length comps) ++ " found):"
+  forM_ comps $ \c -> do
+    let clsName = T.unpack (HC.componentClassName (HC.componentClass c))
+        mfr     = T.unpack (HC.componentManufacturer c)
+        mdl     = T.unpack (HC.componentModel c)
+        pad     = replicate (max 0 (20 - length clsName)) ' '
+    putStrLn $ "  [" ++ clsName ++ "]" ++ pad ++ mfr ++ " / " ++ mdl
+    when verbose $ do
+      case HC.componentSerial c of
+        Just s  -> putStrLn $ "                       Serial: " ++ T.unpack s
+        Nothing -> return ()
+      case HC.componentRevision c of
+        Just r  -> putStrLn $ "                       Revision: " ++ T.unpack r
+        Nothing -> return ()
+      forM_ (HC.componentAddresses c) $ \addr ->
+        putStrLn $ "                       Address: " ++ show addr
+
+-- ============================================================
+-- create-config command (extended with --detect)
+-- ============================================================
+
+optionsCreateConfig :: [OptDescr TCGOpts]
+optionsCreateConfig =
+  [ Option [] ["detect"] (NoArg Detect)  "auto-detect host hardware"
+  , Option ['o'] ["output"] (ReqArg Output "FILE") "output file (default: platform-config.yaml)"
+  , Option ['h'] ["help"]   (NoArg Help)   "show help"
+  ]
+
+doCreateConfig :: [TCGOpts] -> [String] -> IO ()
+doCreateConfig opts files = do
+  when (Help `elem` opts) $ do
+    putStrLn $ usageInfo "usage: tcg-platform-cert-util create-config [options] [filename]" optionsCreateConfig
+    putStrLn ""
+    putStrLn "Create a YAML configuration file for platform certificate generation."
+    putStrLn ""
+    putStrLn "Without --detect: creates a sample config with placeholder data."
+    putStrLn "With --detect:    auto-detects host hardware and populates the config."
+    exitSuccess
+
+  let outputFile = case extractOpt "output" (\case Output o -> Just o; _ -> Nothing) opts "" of
+        "" -> case files of
+          (f:_) -> f
+          []    -> "platform-config.yaml"
+        o -> o
+      detectMode = Detect `elem` opts
+
+  if detectMode
+    then do
+      result <- HC.collectHardware
+      case result of
+        Left err -> do
+          putStrLn $ "Error collecting hardware info: " ++ show err
+          exitFailure
+        Right hw -> do
+          let paccorConfig = HC.hardwareToPaccorConfig hw
+              baseConfig = paccorToYamlConfig paccorConfig
+              config = baseConfig
+                { pccValidityDays = Just 365
+                , pccKeySize = Just 2048
+                , pccCredentialSpecMajor = Just 1
+                , pccCredentialSpecMinor = Just 1
+                , pccCredentialSpecRevision = Just 13
+                , pccPlatformSpecMajor = Just 2
+                , pccPlatformSpecMinor = Just 0
+                , pccPlatformSpecRevision = Just 164
+                , pccSpecificationVersion = Just "1.1"
+                }
+          Yaml.encodeFile outputFile config
+          putStrLn $ "Configuration created from host hardware: " ++ outputFile
+    else do
+      createExampleConfig outputFile
+
 -- | Usage information
 usage :: IO ()
 usage = do
@@ -1165,7 +1305,8 @@ usage = do
   putStrLn "  components     : Show component information"
   putStrLn "  compliance     : Run IWG Profile v1.1 compliance checks"
   putStrLn "  lint           : Validate a YAML configuration file"
-  putStrLn "  create-config  : Create example YAML configuration file"
+  putStrLn "  hwinfo         : Display host hardware information"
+  putStrLn "  create-config  : Create YAML configuration file (--detect for auto-detection)"
   putStrLn "  convert        : Convert paccor JSON to YAML format"
   putStrLn "  help           : Show this help"
   putStrLn ""

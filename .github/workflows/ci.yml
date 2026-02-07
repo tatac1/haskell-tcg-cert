@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6'
+          cabal-version: '3.10'
+
+      - name: Cache Cabal
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cabal/packages
+            ~/.cabal/store
+            dist-newstyle
+          key: ${{ runner.os }}-ci-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
+          restore-keys: |
+            ${{ runner.os }}-ci-cabal-
+
+      - name: Install Z3 SMT solver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y z3
+
+      - name: Update Cabal
+        run: cabal update
+
+      - name: Build all packages
+        run: cabal build all
+
+      - name: Run tests for tcg-platform-cert
+        run: cabal test tcg-platform-cert --test-show-details=direct
+
+      - name: Run tests for tcg-platform-cert-compliance
+        run: cabal test tcg-platform-cert-compliance --test-show-details=direct
+
+      - name: Run tests for tcg-platform-cert-validation
+        run: cabal test tcg-platform-cert-validation --test-show-details=direct
+
+      - name: Run tests for tcg-platform-cert-util
+        run: cabal test tcg-platform-cert-util --test-show-details=direct
+
+      - name: Run tests for platform-hardware-info
+        run: cabal test platform-hardware-info --test-show-details=direct

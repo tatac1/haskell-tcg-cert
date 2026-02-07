@@ -52,6 +52,7 @@ Library
     , network-info >= 0.2
     , directory
     , filepath
+    , aeson >= 2.0
 
   -- Linux specific
   if os(linux)
@@ -68,7 +69,6 @@ Library
     Build-depends:
       unix >= 2.7
       , process
-      , aeson >= 2.0
     cpp-options: -DLINUX
 
   -- Windows specific

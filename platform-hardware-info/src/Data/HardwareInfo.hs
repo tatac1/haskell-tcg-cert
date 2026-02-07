@@ -50,6 +50,8 @@ module Data.HardwareInfo
     -- * Helper functions
   , emptyHardwareInfo
   , emptyPlatformInfo
+    -- * Display
+  , componentClassName
   ) where
 
 import Data.HardwareInfo.Types

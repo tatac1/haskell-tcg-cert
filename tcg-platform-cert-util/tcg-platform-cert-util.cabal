@@ -40,6 +40,7 @@ Library
                    , Data.X509.TCG.Util.HardwareCollector
                    , Data.X509.TCG.Util.ConfigLint
                    , Data.X509.TCG.Util.PreIssuance
+                   , Data.X509.TCG.Util.IanaPen
                    , Data.X509.TCG.Util.JsonReport
   Build-depends:     base >= 4 && < 5
                    , aeson
@@ -75,6 +76,7 @@ Executable           tcg-platform-cert-util
                    , Data.X509.TCG.Util.Config
                    , Data.X509.TCG.Util.ConfigLint
                    , Data.X509.TCG.Util.PreIssuance
+                   , Data.X509.TCG.Util.IanaPen
                    , Data.X509.TCG.Util.JsonReport
                    , Data.X509.TCG.Util.Display
                    , Data.X509.TCG.Util.OID

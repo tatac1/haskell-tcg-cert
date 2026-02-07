@@ -21,7 +21,9 @@ module Data.X509.TCG.Util.HardwareCollector
   , HW.Component(..)
   , ComponentClass(..)
   , ComponentAddress(..)
+  , SmbiosVersion(..)
   , HardwareError(..)
+  , componentClassName
   ) where
 
 import Data.Text (Text)
@@ -34,14 +36,17 @@ import Data.HardwareInfo
   , PlatformInfo(..)
   , ComponentClass(..)
   , ComponentAddress(..)
+  , SmbiosVersion(..)
   , HardwareError(..)
   , getHardwareInfo
   , componentClassToTcgValue
   , tcgComponentClassRegistry
+  , componentClassName
   )
 import qualified Data.HardwareInfo as HW
 
 import qualified Data.X509.TCG.Util.Paccor as P
+import Data.X509.TCG.Util.IanaPen (lookupManufacturerOid)
 
 -- | Collect hardware information from the current system
 collectHardware :: IO (Either HardwareError HardwareInfo)
@@ -70,7 +75,7 @@ platformToPaccor p = P.PaccorPlatform
   , P.platformModel = HW.platformModel p
   , P.platformVersion = Just $ HW.platformVersion p
   , P.platformSerial = HW.platformSerial p
-  , P.platformManufacturerId = Nothing
+  , P.platformManufacturerId = fmap T.pack $ lookupManufacturerOid (HW.platformManufacturer p)
   }
 
 -- | Convert Component to PACCOR Component format
@@ -81,7 +86,7 @@ componentToPaccorComponent c = P.PaccorComponent
   , P.componentModel = Just $ HW.componentModel c
   , P.componentSerial = HW.componentSerial c
   , P.componentRevision = HW.componentRevision c
-  , P.componentManufacturerId = Nothing
+  , P.componentManufacturerId = fmap T.pack $ lookupManufacturerOid (HW.componentManufacturer c)
   , P.componentFieldReplaceable = fmap boolToText (HW.componentFieldReplaceable c)
   , P.componentAddresses = case HW.componentAddresses c of
       [] -> Nothing
