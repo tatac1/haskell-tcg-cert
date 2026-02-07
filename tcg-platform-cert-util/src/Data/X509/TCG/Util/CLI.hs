@@ -26,6 +26,7 @@ module Data.X509.TCG.Util.CLI
     doCompliance,
     doLint,
     doHwinfo,
+    doCreateConfig,
     createExampleConfig,
 
     -- * Option Parsers
@@ -38,6 +39,7 @@ module Data.X509.TCG.Util.CLI
     optionsCompliance,
     optionsLint,
     optionsHwinfo,
+    optionsCreateConfig,
 
     -- * Utility Functions
     extractOpt,
@@ -70,6 +72,7 @@ import Data.X509.TCG.Util.PreIssuance (preIssuanceLintOnly, shouldBlockLint)
 import Data.X509.TCG.Util.JsonReport
 import Data.X509.TCG.Util.Paccor
 import qualified Data.X509.TCG.Util.HardwareCollector as HC
+import qualified Data.Yaml as Yaml
 import System.Console.GetOpt
 import System.Exit
 
@@ -1233,6 +1236,61 @@ displayHardwareInfo verbose hw = do
         Nothing -> return ()
       forM_ (HC.componentAddresses c) $ \addr ->
         putStrLn $ "                       Address: " ++ show addr
+
+-- ============================================================
+-- create-config command (extended with --detect)
+-- ============================================================
+
+optionsCreateConfig :: [OptDescr TCGOpts]
+optionsCreateConfig =
+  [ Option [] ["detect"] (NoArg Detect)  "auto-detect host hardware"
+  , Option ['o'] ["output"] (ReqArg Output "FILE") "output file (default: platform-config.yaml)"
+  , Option ['h'] ["help"]   (NoArg Help)   "show help"
+  ]
+
+doCreateConfig :: [TCGOpts] -> [String] -> IO ()
+doCreateConfig opts files = do
+  when (Help `elem` opts) $ do
+    putStrLn $ usageInfo "usage: tcg-platform-cert-util create-config [options] [filename]" optionsCreateConfig
+    putStrLn ""
+    putStrLn "Create a YAML configuration file for platform certificate generation."
+    putStrLn ""
+    putStrLn "Without --detect: creates a sample config with placeholder data."
+    putStrLn "With --detect:    auto-detects host hardware and populates the config."
+    exitSuccess
+
+  let outputFile = case extractOpt "output" (\case Output o -> Just o; _ -> Nothing) opts "" of
+        "" -> case files of
+          (f:_) -> f
+          []    -> "platform-config.yaml"
+        o -> o
+      detectMode = Detect `elem` opts
+
+  if detectMode
+    then do
+      result <- HC.collectHardware
+      case result of
+        Left err -> do
+          putStrLn $ "Error collecting hardware info: " ++ show err
+          exitFailure
+        Right hw -> do
+          let paccorConfig = HC.hardwareToPaccorConfig hw
+              baseConfig = paccorToYamlConfig paccorConfig
+              config = baseConfig
+                { pccValidityDays = Just 365
+                , pccKeySize = Just 2048
+                , pccCredentialSpecMajor = Just 1
+                , pccCredentialSpecMinor = Just 1
+                , pccCredentialSpecRevision = Just 13
+                , pccPlatformSpecMajor = Just 2
+                , pccPlatformSpecMinor = Just 0
+                , pccPlatformSpecRevision = Just 164
+                , pccSpecificationVersion = Just "1.1"
+                }
+          Yaml.encodeFile outputFile config
+          putStrLn $ "Configuration created from host hardware: " ++ outputFile
+    else do
+      createExampleConfig outputFile
 
 -- | Usage information
 usage :: IO ()
