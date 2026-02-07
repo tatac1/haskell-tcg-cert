@@ -59,10 +59,12 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
-import System.Directory (doesFileExist, doesDirectoryExist, listDirectory)
+import System.Directory (doesFileExist, doesDirectoryExist, listDirectory, canonicalizePath)
 import System.FilePath ((</>), takeFileName, takeDirectory)
 import System.Posix.Files (readSymbolicLink)
 import System.Process (readProcess)
+
+import Data.HardwareInfo.Linux.PciIds (lookupVendorByIdText)
 
 -- | Base path for DMI ID information
 dmiIdPath :: FilePath
@@ -210,13 +212,11 @@ getPciAddressFromPath devicePath = do
 -- | Resolve a symlink to find the PCI address
 resolveSymlinkToPciAddress :: FilePath -> IO (Maybe Text)
 resolveSymlinkToPciAddress symlinkPath = do
-  result <- try $ readSymbolicLink symlinkPath
-  case result of
+  -- Resolve the full path (canonicalize handles sysfs symlink chains)
+  resolveResult <- try $ canonicalizePath symlinkPath
+  case resolveResult of
     Left (_ :: SomeException) -> return Nothing
-    Right target -> do
-      -- The target might be something like "../../../0000:00:1f.6"
-      -- We need to check if it's a PCI bus path
-      let resolved = resolveRelativePath (takeDirectory symlinkPath) target
+    Right resolved -> do
       -- Check if 'subsystem' points to /bus/pci
       let subsystemPath = resolved </> "subsystem"
       subsystemResult <- try $ readSymbolicLink subsystemPath
@@ -248,18 +248,18 @@ resolveRelativePath base relPath = go (splitPath base) (splitPath relPath)
 getNetworkInterfacePciAddress :: Text -> IO (Maybe Text)
 getNetworkInterfacePciAddress iface = do
   let netPath = "/sys/class/net" </> T.unpack iface
-  -- First check if the device symlink exists
+  -- First check if the device symlink exists (points to a directory)
   let deviceLink = netPath </> "device"
-  exists <- doesFileExist deviceLink
+  exists <- doesDirectoryExist deviceLink
   if not exists
     then return Nothing
     else do
-      result <- try $ readSymbolicLink deviceLink
-      case result of
+      -- Resolve the full path (canonicalize handles sysfs symlink chains)
+      resolveResult <- try $ canonicalizePath deviceLink
+      case resolveResult of
         Left (_ :: SomeException) -> return Nothing
-        Right target -> do
-          -- Resolve the symlink and check if it's PCI
-          let resolved = resolveRelativePath netPath target
+        Right resolved -> do
+          -- Check if 'subsystem' points to /bus/pci
           let subsystemPath = resolved </> "subsystem"
           subsystemResult <- try $ readSymbolicLink subsystemPath
           case subsystemResult of
@@ -290,42 +290,10 @@ getNetworkInterfaceDriver iface = do
     Left (_ :: SomeException) -> return Nothing
     Right target -> return $ Just $ T.pack $ takeFileName target
 
--- | Lookup vendor name from PCI vendor ID
--- Maps common PCI vendor IDs to human-readable names
+-- | Lookup vendor name from PCI vendor ID text (e.g., "0x8086")
+-- Uses the pci.ids database (embedded + runtime fallback)
 lookupVendorName :: Text -> Text
-lookupVendorName vendorId =
-  case T.toLower vendorId of
-    "0x8086" -> "Intel Corporation"
-    "0x10de" -> "NVIDIA Corporation"
-    "0x1022" -> "Advanced Micro Devices, Inc. [AMD]"
-    "0x1002" -> "Advanced Micro Devices, Inc. [AMD/ATI]"
-    "0x14e4" -> "Broadcom Inc."
-    "0x8087" -> "Intel Corporation"
-    "0x10ec" -> "Realtek Semiconductor Co., Ltd."
-    "0x168c" -> "Qualcomm Atheros"
-    "0x1969" -> "Qualcomm Atheros"
-    "0x15b3" -> "Mellanox Technologies"
-    "0x1077" -> "QLogic Corp."
-    "0x19a2" -> "Emulex Corporation"
-    "0x1137" -> "Cisco Systems Inc"
-    "0x1d6a" -> "Aquantia Corp."
-    "0x1425" -> "Chelsio Communications Inc"
-    "0x15ad" -> "VMware"
-    "0x1af4" -> "Red Hat, Inc. (virtio)"
-    "0x1ab8" -> "Parallels, Inc."
-    "0x80ee" -> "Oracle Corporation (VirtualBox)"
-    "0x5853" -> "XenSource, Inc."
-    "0x1c5c" -> "SK Hynix"
-    "0x144d" -> "Samsung Electronics Co Ltd"
-    "0x1179" -> "Toshiba Corporation"
-    "0x1987" -> "Phison Electronics Corporation"
-    "0x126f" -> "Silicon Motion, Inc."
-    "0x1cc1" -> "ADATA Technology Co., Ltd."
-    "0x2646" -> "Kingston Technology Company, Inc."
-    "0xc0a9" -> "Micron/Crucial Technology"
-    "0x1c5f" -> "Memblaze Technology Co., Ltd."
-    "0x1e0f" -> "KIOXIA Corporation"
-    _ -> ""
+lookupVendorName = lookupVendorByIdText
 
 -- | Get firmware version for a network interface using ethtool
 -- Parses output of "ethtool -i <iface>" for firmware-version field

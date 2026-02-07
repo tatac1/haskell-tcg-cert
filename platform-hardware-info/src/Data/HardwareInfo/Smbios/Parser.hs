@@ -100,18 +100,25 @@ parseHeader bs = SmbiosHeader
   }
 
 -- | Parse null-terminated string table
--- Strings are separated by single null bytes, table ends with double null
+-- Strings are separated by single null bytes, table ends with double null.
+-- Per SMBIOS spec: if no strings, the section is \0\0 (two null bytes).
+-- With strings: "str1\0str2\0\0" (each string null-terminated, plus trailing null).
 parseStrings :: ByteString -> ([ByteString], ByteString)
-parseStrings = go []
+parseStrings bs
+  -- No strings case: double-null (\0\0) - consume both bytes
+  | BS.length bs >= 2 && BS.index bs 0 == 0 && BS.index bs 1 == 0 =
+      ([], BS.drop 2 bs)
+  | BS.null bs = ([], bs)
+  | otherwise = go [] bs
   where
-    go acc bs
-      | BS.null bs = (reverse acc, bs)
-      | BS.head bs == 0 = (reverse acc, BS.drop 1 bs)  -- End of strings
+    go acc rest
+      | BS.null rest = (reverse acc, rest)
+      | BS.head rest == 0 = (reverse acc, BS.drop 1 rest)  -- Trailing null after last string
       | otherwise =
-          let (str, rest) = BS.break (== 0) bs
-          in if BS.null rest
+          let (str, rest') = BS.break (== 0) rest
+          in if BS.null rest'
                then (reverse (str : acc), BS.empty)
-               else go (str : acc) (BS.drop 1 rest)  -- Skip null terminator
+               else go (str : acc) (BS.drop 1 rest')  -- Skip null terminator
 
 -- | Parse 32-bit SMBIOS entry point (_SM_)
 parseEntryPoint32 :: ByteString -> Either String SmbiosEntryPoint
@@ -302,9 +309,17 @@ extractTpmInfo table =
       , componentAddresses    = []
       }
   where
+    -- TPM vendor ID is 4 ASCII characters (e.g., "AMD\0" stored as 0x00444D41)
     extractTpmVendor s =
       case getStructureDWord s 0x04 of
-        Just v -> T.pack $ show v  -- Vendor ID as numeric string
+        Just v ->
+          let chars = filter (/= '\0')
+                [ toEnum $ fromIntegral (v .&. 0xFF)
+                , toEnum $ fromIntegral ((v `shiftR` 8) .&. 0xFF)
+                , toEnum $ fromIntegral ((v `shiftR` 16) .&. 0xFF)
+                , toEnum $ fromIntegral ((v `shiftR` 24) .&. 0xFF)
+                ]
+          in if null chars then "" else T.pack chars
         Nothing -> ""
     extractTpmVersion s =
       case (getStructureByte s 0x08, getStructureByte s 0x09) of

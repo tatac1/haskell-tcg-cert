@@ -22,6 +22,7 @@ module Data.HardwareInfo.Linux
   ) where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import qualified Data.ByteString as BS
 import Data.Text (Text)
 import qualified Data.Text as T
 import Network.Info (getNetworkInterfaces, NetworkInterface(..), MAC(..))
@@ -39,7 +40,7 @@ import Data.HardwareInfo.Linux.Sysfs
   , isWirelessInterface, isCellularInterface, getCellularModemInfo
   )
 import Data.HardwareInfo.Linux.Nvme (getNvmeDevices)
-import Data.HardwareInfo.Linux.Pci (getGpuDevices, getStorageControllers, getUsbControllers, getAudioControllers, getAccelerators, getEncryptionControllers)
+import Data.HardwareInfo.Linux.Pci (getGpuDevices, getStorageControllers, getNetworkControllers, getUsbControllers, getAudioControllers, getAccelerators, getEncryptionControllers)
 import Data.HardwareInfo.Linux.Block (getAllStorageDevices, getOpticalDrives)
 import Data.HardwareInfo.Linux.Bluetooth (getBluetoothDevices)
 import Data.HardwareInfo.Linux.Input (getInputDevices)
@@ -99,11 +100,17 @@ instance MonadHardware LinuxHW where
         return $ Right $ extractMemoryDevices table
 
   getNetworkInfo = LinuxHW $ do
-    -- Get NICs (Ethernet and WiFi)
+    -- Get NICs (Ethernet and WiFi) from OS network interfaces
     nics <- getLinuxNetworkInterfaces
     -- Get Bluetooth adapters
     btDevices <- getBluetoothDevices
-    return $ Right $ nics ++ btDevices
+    -- Get PCI network controllers (catches devices without OS interfaces,
+    -- e.g. SR-IOV physical functions like Cavium b200)
+    pciNetDevs <- getNetworkControllers
+    -- Deduplicate: filter out PCI network controllers already found via OS interfaces
+    let nicPciAddrs = concatMap getPciAddresses nics
+        orphanPciDevs = filter (not . hasPciAddress nicPciAddrs) pciNetDevs
+    return $ Right $ nics ++ btDevices ++ orphanPciDevs
 
   getStorageInfo = LinuxHW $ do
     -- Get NVMe devices
@@ -192,7 +199,7 @@ instance MonadHardware LinuxHW where
     case epResult of
       Left err -> return $ Left $ SmbiosNotAvailable err
       Right epData -> do
-        let ep = if T.pack "_SM3_" `T.isPrefixOf` T.pack (show epData)
+        let ep = if BS.isPrefixOf "_SM3_" epData
                    then parseEntryPoint64 epData
                    else parseEntryPoint32 epData
         case ep of
@@ -245,7 +252,7 @@ getSmbiosTableParsed = do
     Left err -> return $ Left $ SmbiosNotAvailable err
     Right epData -> do
       -- Determine entry point type and parse
-      let epParse = if "_SM3_" `elem` chunksOf 5 (show epData)
+      let epParse = if BS.isPrefixOf "_SM3_" epData
                       then parseEntryPoint64 epData
                       else parseEntryPoint32 epData
       case epParse of
@@ -258,9 +265,16 @@ getSmbiosTableParsed = do
               case parseSmbiosTable ep tableData of
                 Left err -> return $ Left $ ParseError $ T.pack err
                 Right table -> return $ Right table
-  where
-    chunksOf _ [] = []
-    chunksOf n xs = take n xs : chunksOf n (drop n xs)
+
+-- | Extract PCI addresses from a component's address list
+getPciAddresses :: Component -> [Text]
+getPciAddresses comp =
+  [ addr | PCIAddress addr <- componentAddresses comp ]
+
+-- | Check if a component has a PCI address matching any in the given list
+hasPciAddress :: [Text] -> Component -> Bool
+hasPciAddress knownAddrs comp =
+  any (`elem` knownAddrs) (getPciAddresses comp)
 
 -- | Get network interfaces using network-info package
 -- Collects MAC addresses, PCI addresses, manufacturer, and model where available

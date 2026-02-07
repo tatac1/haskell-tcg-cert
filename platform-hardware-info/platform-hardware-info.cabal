@@ -61,6 +61,8 @@ Library
       Data.HardwareInfo.Linux.Sysfs
       Data.HardwareInfo.Linux.Nvme
       Data.HardwareInfo.Linux.Pci
+      Data.HardwareInfo.Linux.PciIds
+      Data.HardwareInfo.Linux.UsbIds
       Data.HardwareInfo.Linux.Block
       Data.HardwareInfo.Linux.Bluetooth
       Data.HardwareInfo.Linux.Input
@@ -69,6 +71,7 @@ Library
     Build-depends:
       unix >= 2.7
       , process
+      , file-embed >= 0.0.10
     cpp-options: -DLINUX
 
   -- Windows specific

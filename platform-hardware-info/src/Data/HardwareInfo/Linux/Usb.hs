@@ -29,6 +29,7 @@ import System.FilePath ((</>))
 import Data.Char (isDigit)
 
 import Data.HardwareInfo.Types
+import Data.HardwareInfo.Linux.UsbIds (lookupUsbVendorByIdText, lookupUsbProductByIdText)
 
 -- | USB device class codes
 data UsbDeviceClass
@@ -131,10 +132,12 @@ readUsbDevice busPort = do
 
           let mfr = case manufacturer of
                       Just m -> m
-                      Nothing -> lookupUsbVendor vid
+                      Nothing -> lookupUsbVendorByIdText vid
           let prod = case product of
                        Just p -> p
-                       Nothing -> T.pack busPort
+                       Nothing ->
+                         let dbName = lookupUsbProductByIdText vid pid
+                         in if T.null dbName then T.pack busPort else dbName
 
           return $ Just UsbDevice
             { usbBusPort = T.pack busPort
@@ -214,44 +217,6 @@ usbClassToComponentClass cls = case cls of
   UsbClassWireless    -> ClassGeneralNetworkAdapter  -- Wireless adapter
   UsbClassComm        -> ClassGeneralNetworkAdapter  -- CDC (modems, etc.)
   _                   -> ClassGenericComponent
-
--- | Lookup USB vendor name from vendor ID
-lookupUsbVendor :: Text -> Text
-lookupUsbVendor vid =
-  case T.toLower vid of
-    "0781" -> "SanDisk Corp."
-    "0951" -> "Kingston Technology"
-    "090c" -> "Silicon Motion"
-    "13fe" -> "Kingston Technology"
-    "058f" -> "Alcor Micro Corp."
-    "1005" -> "Apacer Technology"
-    "0930" -> "Toshiba Corp."
-    "0bda" -> "Realtek Semiconductor"
-    "8087" -> "Intel Corp."
-    "1d6b" -> "Linux Foundation"
-    "046d" -> "Logitech"
-    "045e" -> "Microsoft Corp."
-    "413c" -> "Dell"
-    "17ef" -> "Lenovo"
-    "05ac" -> "Apple Inc."
-    "04f2" -> "Chicony Electronics"
-    "1bcf" -> "Sunplus Innovation"
-    "0c45" -> "Microdia"
-    "5986" -> "Acer Inc."
-    "04e8" -> "Samsung Electronics"
-    "2109" -> "VIA Labs"
-    "0424" -> "Microchip Technology"
-    "05e3" -> "Genesys Logic"
-    "1a40" -> "Terminus Technology"
-    "0cf3" -> "Qualcomm Atheros"
-    "0489" -> "Foxconn / Hon Hai"
-    "13d3" -> "IMC Networks"
-    "1058" -> "Western Digital"
-    "0480" -> "Toshiba America"
-    "174c" -> "ASMedia Technology"
-    "152d" -> "JMicron Technology"
-    "0bc2" -> "Seagate"
-    _      -> ""
 
 #else
 -- Non-Linux stub
