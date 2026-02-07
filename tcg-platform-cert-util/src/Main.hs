@@ -13,7 +13,8 @@
 -- - validate: Validate certificate compliance
 -- - compliance: Run IWG Profile v1.1 compliance tests
 -- - components: Extract component information
--- - create-config: Create example YAML configuration
+-- - hwinfo: Display host hardware information
+-- - create-config: Create example YAML configuration (with --detect for auto-detection)
 -- - convert: Convert paccor JSON to YAML format
 
 module Main where
@@ -41,12 +42,7 @@ componentsMain :: [String] -> IO ()
 componentsMain = getoptMain optionsComponents $ \o n -> doComponents o n
 
 createConfigMain :: [String] -> IO ()
-createConfigMain [] = createExampleConfig "platform-config.yaml"
-createConfigMain [filename] = createExampleConfig filename
-createConfigMain _ = do
-  putStrLn "Usage: tcg-platform-cert-util create-config [filename]"
-  putStrLn "  filename: Output YAML file (default: platform-config.yaml)"
-  exitFailure
+createConfigMain = getoptMain optionsCreateConfig $ \o n -> doCreateConfig o n
 
 convertMain :: [String] -> IO ()
 convertMain = getoptMain optionsConvert $ \o n -> doConvert o n
@@ -56,6 +52,9 @@ complianceMain = getoptMain optionsCompliance $ \o n -> doCompliance o n
 
 lintMain :: [String] -> IO ()
 lintMain = getoptMain optionsLint $ \o n -> doLint o n
+
+hwinfoMain :: [String] -> IO ()
+hwinfoMain = getoptMain optionsHwinfo $ \o n -> doHwinfo o n
 
 -- | Main entry point
 main :: IO ()
@@ -72,6 +71,7 @@ main = do
     "convert" : as -> convertMain as
     "compliance" : as -> complianceMain as
     "lint" : as -> lintMain as
+    "hwinfo" : as -> hwinfoMain as
     "help" : _ -> usage
     "--help" : _ -> usage
     _ -> do
