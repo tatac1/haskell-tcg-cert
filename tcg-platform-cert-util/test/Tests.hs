@@ -16,6 +16,7 @@ import qualified SBVTests
 import qualified ConfigLintTests
 import qualified PreIssuanceTests
 import qualified JsonReportTests
+import qualified IanaPenTests
 
 main :: IO ()
 main = defaultMain tests
@@ -33,6 +34,7 @@ tests = testGroup "TCG Platform Certificate Utility Tests"
   , configLintTests
   , preIssuanceTests
   , jsonReportTests
+  , ianaPenTests
   ]
 
 -- | Basic unit tests for core functionality
@@ -79,3 +81,6 @@ preIssuanceTests = PreIssuanceTests.tests
 
 jsonReportTests :: TestTree
 jsonReportTests = JsonReportTests.tests
+
+ianaPenTests :: TestTree
+ianaPenTests = IanaPenTests.tests
