@@ -223,9 +223,9 @@ defaultReferenceDB = Map.fromList
   , (CheckId Chain 1, SpecReference IWGProfile "3.2.11" "Authority Key Identifier"
       (Just 1249) Must (Just "Assign 'critical' the value FALSE; include keyIdentifier if AKI is present"))
   , (CheckId Chain 2, SpecReference IWGProfile "3.2.12" "Authority Info Access"
-      (Just 1253) Should (Just "Assign 'critical' the value FALSE; extension MAY be omitted"))
+      (Just 1253) Should (Just "Assign 'critical' the value FALSE; extension MAY be omitted; if present, id-ad-ocsp/URI SHOULD be used"))
   , (CheckId Chain 3, SpecReference IWGProfile "3.2.13" "CRL Distribution"
-      (Just 1262) May (Just "Assign 'critical' the value FALSE; extension MAY be omitted"))
+      (Just 1262) Should (Just "Assign 'critical' the value FALSE; extension MAY be omitted; if present, CRL URI SHOULD be provided"))
   , (CheckId Chain 4, SpecReference IWGProfile "2.1.5.2" "EK Certificate binding"
       (Just 375) Must (Just "SHALL be an unambiguous indication of the EK Certificates"))
   , (CheckId Chain 5, SpecReference IWGProfile "3.2.9" "Targeting Information"

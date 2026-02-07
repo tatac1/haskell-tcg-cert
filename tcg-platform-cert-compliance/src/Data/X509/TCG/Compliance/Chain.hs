@@ -140,7 +140,7 @@ checkAuthorityInfoAcc cert refDB = do
 -- | CHN-003: CRL Distribution Points extension
 -- Reference: IWG Profile §3.2.13, line 1262
 -- "CRL Distribution Points extension" - MUST NOT be critical if present
--- Note: Base/Delta = MAY (if present MUST be valid)
+-- Note: Base/Delta = SHOULD (if present, URI should be provided)
 checkCrlDistribution :: ComplianceCheck
 checkCrlDistribution cert refDB = do
   let cid = CheckId Chain 3
@@ -173,7 +173,7 @@ checkCrlDistribution cert refDB = do
                              then mkFail cid desc ref "Invalid CRL distributionPoint URI"
                              else evaluateOcspPreference cid ref desc exts
         Nothing ->
-          mkSkip cid desc ref "CRL Distribution Points not present (MAY)"
+          mkSkip cid desc ref "CRL Distribution Points extension not present (optional)"
 
 evaluateOcspPreference :: CheckId -> SpecReference -> Text -> [ExtensionRaw] -> IO CheckResult
 evaluateOcspPreference cid ref desc exts =

@@ -212,7 +212,6 @@ isApplicable _        _                 = False
 --   - Platform Serial Number (VAL-004)
 --   - Platform Manufacturer Identifier (VAL-005)
 --   - Platform Configuration Uri (STR-010)
---   - Revocation Locator (CHN-003)
 --   - EK Certificates (CHN-004)
 --   - Platform Configuration (DLT-001 semantics are conditional on presence)
 getRequirementLevel :: CheckId -> CertificateType -> RequirementLevel
@@ -233,9 +232,9 @@ getRequirementLevel cid certType = case (cid, certType) of
   (CheckId Chain 2, _) -> Should
 
   -- CHN-003: CRL Distribution Points (Revocation Locator)
-  -- Base/Delta: MAY (if present MUST be valid)
-  (CheckId Chain 3, BasePlatformCert) -> May
-  (CheckId Chain 3, DeltaPlatformCert) -> May
+  -- Base/Delta: SHOULD (if present, URI should be provided)
+  (CheckId Chain 3, BasePlatformCert) -> Should
+  (CheckId Chain 3, DeltaPlatformCert) -> Should
 
   -- DLT-001: platformConfiguration MAY be present in Delta
   -- If present, it MUST represent changes from base certificate.

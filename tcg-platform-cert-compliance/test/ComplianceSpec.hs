@@ -54,4 +54,8 @@ tests = testGroup "Compliance Checks"
       getRequirementLevel (CheckId Structural 13) DeltaPlatformCert @?= May
       getRequirementLevel (CheckId Value 6) BasePlatformCert @?= Should
       getRequirementLevel (CheckId Value 6) DeltaPlatformCert @?= MustNot
+      getRequirementLevel (CheckId Chain 2) BasePlatformCert @?= Should
+      getRequirementLevel (CheckId Chain 2) DeltaPlatformCert @?= Should
+      getRequirementLevel (CheckId Chain 3) BasePlatformCert @?= Should
+      getRequirementLevel (CheckId Chain 3) DeltaPlatformCert @?= Should
   ]
