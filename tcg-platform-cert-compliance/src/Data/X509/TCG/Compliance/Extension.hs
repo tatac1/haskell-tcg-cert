@@ -103,7 +103,7 @@ checkCertificatePolicies cert refDB = do
                           "CertificatePolicies must include at least one policyIdentifier"
                         else if null (pcpCpsUris pols)
                           then mkFail cid "Certificate Policies extension" ref
-                            "CertificatePolicies must include at least one cPSuri"
+                            "cPSuri policy qualifier with HTTP URL is required (IWG §3.2.7)"
                           else
                             let badLen = filter (\u -> B.length u < 1 || B.length u > uriMax) (pcpCpsUris pols)
                                 isHttpScheme u =

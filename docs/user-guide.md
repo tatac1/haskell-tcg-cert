@@ -308,6 +308,20 @@ tcg-platform-cert-util generate \
   --ca-cert ca-cert.pem \
   --ek-cert ek-cert.pem \
   --output platform-cert.pem
+
+# Generate from paccor JSON files via paccor signer
+tcg-platform-cert-util generate \
+  --use-paccor-signer \
+  --config ComponentList_PCUseCase1.json \
+  --ca-key TCG_OEM_ecc_p256_TestCA_Leaf.key \
+  --ca-cert TCG_OEM_ecc_p256_TestCA_Leaf.pem \
+  --ek-cert TCG_EK_ecc_p256_Test.pem \
+  --paccor-signer /opt/paccor/bin/signer \
+  --paccor-validator /opt/paccor/bin/validator \
+  --paccor-cert-serial 23 \
+  --paccor-not-before 20180101 \
+  --paccor-not-after 20680101 \
+  --output TCG_PlatCert_v1.1_PCUseCase1_ecc_p256_Test.pem
 ```
 
 **Full option list:**
@@ -329,6 +343,15 @@ tcg-platform-cert-util generate \
 | `--skip-compliance` | | | Skip pre-issuance compliance checks |
 | `--compat` | | (default) | OperationalCompatibility mode |
 | `--strict-v11` | | | Strict IWG v1.1 mode |
+| `--use-paccor-signer` | | | Use paccor signer with paccor JSON files |
+| `--paccor-extensions FILE` | | `<config-dir>/Extensions.json` | paccor `Extensions.json` path |
+| `--paccor-policy FILE` | | `<config-dir>/PolicyReference.json` | paccor `PolicyReference.json` path |
+| `--paccor-signer FILE` | | `$PACCOR_SIGNER_PATH` or `/opt/paccor/bin/signer` | paccor signer binary path |
+| `--paccor-validator FILE` | | `$PACCOR_VALIDATOR_PATH` or `/opt/paccor/bin/validator` | paccor validator binary path |
+| `--paccor-cert-serial NUM` | | `1` | Certificate serial for paccor signer (`-N`) |
+| `--paccor-not-before YYYYMMDD` | | `20180101` | `notBefore` for paccor signer (`-b`) |
+| `--paccor-not-after YYYYMMDD` | | `20680101` | `notAfter` for paccor signer (`-a`) |
+| `--paccor-holder FILE` | | `--ek-cert` | Holder certificate passed to paccor signer (`-e`) |
 | `--json` | | | Machine-readable JSON output |
 
 **What happens during generation:**
