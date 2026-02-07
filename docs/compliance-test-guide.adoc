@@ -1,0 +1,1192 @@
+= TCG Platform Certificate Compliance Specification
+
+== 1. Scope
+
+This document specifies the compliance verification requirements for TCG Platform Certificates, based on the following primary sources:
+
+* `docs/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf`
+* `docs/TCG_PlatformCertificateProfilev1p1_r19_Errata_v3_pub.pdf`
+* `docs/TCG_Component_Class_Registry_v1.0_rev14_pub.pdf`
+* `docs/SMBIOS-Component-Class-Registry_v1.01_finalpublication.pdf`
+* `docs/TCG_PCIe_Component_Class_Registry_v1_r18_pub10272021.pdf`
+* `docs/Storage-Component-Class-Registry-Version-1.0-Revision-22_pub.pdf`
+
+This specification covers 66 implementation checks (STR/VAL/DLT/CHN/REG/EXT/SEC/ERR).
+Note that `REG-*` checks have external specification dependencies per registry type; therefore, the applicable normative basis must be explicitly stated according to the registry in use.
+The default profile is *Operational Compatibility (v1.1 + subsequent registries)*, which includes PCIe/Storage registries as conformance assessment targets.
+
+== 2. Normative Interpretation
+
+* RFC 2119 terminology (MUST/SHOULD/MAY, etc.) follows the definitions in the IWG body text (L41-L42).
+* ASN.1 structures require DER encoding (L317).
+* Errata v3 Clarifications/Errata take precedence over and are applied as corrections to the IWG R19 body text.
+* Per Errata v3 Clarification 2, certificate sample values in the Appendix are treated as informative.
+* The corresponding Registry specification (TCG/SMBIOS/PCIe/Storage) is applied normatively based on the `componentClassRegistry` value.
+* The default assessment profile in this document is `OperationalCompatibility` (v1.1 + PCIe/Storage).
+* `StrictV11` (tcg/ietf/dmtf only) assessment is treated as an optional additional profile.
+* When requirements conflict within the IWG body text, the following explicit rules apply:
+* `DLT-005` cites both conflicting clauses and defines the default assessment (see Section 8 of this document).
+* Assessment levels:
+* `Required`: MUST / MUST NOT
+* `Recommended`: SHOULD / SHOULD NOT
+* `Optional`: MAY
+
+== 3. Conformance Decision
+
+* If there is one or more `Required` failure, or one or more execution errors, the certificate is *Non-compliant*.
+* If only `Recommended` failures exist, the certificate is *Compliant with recommendations* (improvement advised).
+* `Optional` omissions do not constitute non-compliance, but if present, structural and value validity must be verified.
+* The assessment profile used (`OperationalCompatibility`/`StrictV11`) must always be recorded in the assessment result.
+
+== 4. Global ASN.1/DER Constraints
+
+[cols="1,5,2,3", options="header"]
+|===
+| ID | Rule | Level | Source
+
+| G-001
+| ASN.1 must be DER encoded
+| MUST
+| §3 (L315-L317)
+
+| G-002
+| In `URIReference`, `hashAlgorithm` and `hashValue` must not exist independently (one without the other)
+| MUST
+| §3.1.1 (L402-L407)
+
+| G-003
+| `URIMAX` should not exceed a recommended upper limit of 1024
+| SHOULD NOT exceed
+| §3.1.1 (L336-L341)
+
+| G-004
+| `STRMAX` should not exceed a recommended upper limit of 256
+| SHOULD NOT exceed
+| §3.1.1 (L342-L345)
+
+| G-005
+| `AlgorithmIdentifier.parameters` for hashing should generally not be used
+| SHOULD NOT use
+| §3.1.6 (L650-L652)
+
+| G-006
+| The `platformConfiguration` parser should be version-aware, recognizing both current and prior OIDs
+| SHOULD
+| §3.1.6 NOTE (L655-L661)
+|===
+
+== 5. Compliance Check Catalog (66 checks)
+
+=== 5.1 STR (STR-001 through STR-013)
+
+[cols="1,5,1,1,3", options="header"]
+|===
+| ID | Requirement | Level | Applies | Source
+
+| STR-001
+| AC version must be v2 (ASN.1 value is `1`)
+| MUST
+| Base/Delta
+| §3.2.1 (L686-L687), §3.3.1 (L800-L801)
+
+| STR-002
+| Holder must use the `BaseCertificateID` choice and include the referenced certificate's issuer/serial (for Base, the TPM EK certificate)
+| MUST
+| Base/Delta
+| §3.2.4 (L698-L700), §3.3.4 (L812-L813), Errata Clarification 1 (L92-L94)
+
+| STR-003
+| Issuer must represent the issuer's DN
+| MUST
+| Base/Delta
+| §3.2.5 (L705-L707), §3.3.5 (L815-L818)
+
+| STR-004
+| Signature algorithm must correspond to the TCG Algorithm Registry
+| MUST
+| Base/Delta
+| §3.2.3 (L694-L696), §3.3.3 (L808-L810)
+
+| STR-005
+| Serial Number must be a positive integer and unique within the issuer
+| MUST
+| Base/Delta
+| §3.2.2 (L689-L691), §3.3.2 (L803-L805)
+
+| STR-006
+| `notBefore/notAfter` must conform to RFC 5755 format, with `notBefore \<= notAfter`
+| MUST
+| Base/Delta
+| §3.2.6 (L711-L714), §3.3.6 (L821-L825)
+
+| STR-007
+| Attributes are recommended to be included
+| SHOULD
+| Base/Delta
+| §3.2.10 (L739-L748), §3.3.10 (L847-L850)
+
+| STR-008
+| Duplicate extension OIDs are prohibited
+| MUST
+| Base/Delta
+| RFC 5755 compliance requirement (§3.2/§3.3 preamble L678-L679, L793-L794)
+
+| STR-009
+| Unknown critical extensions must be rejected
+| MUST
+| Base/Delta
+| RFC 5755 compliance requirement (§3.2/§3.3 preamble L678-L679, L793-L794)
+
+| STR-010
+| If `platformConfigUri` is present, it must conform to the `URIReference` structure
+| MAY + valid if present
+| Base/Delta
+| §3.1.7 (L662-L673), §3.1.1 (L402-L407)
+
+| STR-011
+| `TCG Platform Specification` is recommended for Base, prohibited for Delta
+| SHOULD (Base) / MUST NOT (Delta)
+| Base/Delta
+| §3.2.10 (L740-L742), §3.1.3 (L481-L482)
+
+| STR-012
+| `TCG Credential Type` is recommended for Base, required for Delta
+| SHOULD (Base) / MUST (Delta)
+| Base/Delta
+| §3.2.10 (L743), §3.1.4 (L500-L501), §3.3.10 (L847-L848)
+
+| STR-013
+| `TCG Credential Specification` is recommended for Base, conditionally optional for Delta
+| SHOULD (Base) / MAY (Delta)
+| Base/Delta
+| §3.2.10 (L744-L745), §3.1.5 (L516-L517), Table 4 (L798)
+|===
+
+=== 5.2 VAL (VAL-001 through VAL-017)
+
+[cols="1,5,1,1,3", options="header"]
+|===
+| ID | Requirement | Level | Applies | Source
+
+| VAL-001
+| `platformManufacturerStr` must be `UTF8String (1..STRMAX)`
+| MUST
+| Base/Delta
+| §3.1.2 (L430-L444)
+
+| VAL-002
+| `platformModel` must be `UTF8String (1..STRMAX)`
+| MUST
+| Base/Delta
+| §3.1.2 (L432-L448)
+
+| VAL-003
+| `platformVersion` must be `UTF8String (1..STRMAX)`
+| MUST
+| Base/Delta
+| §3.1.2 (L433-L452)
+
+| VAL-004
+| `platformSerial` is `UTF8String (1..STRMAX)` (optional)
+| MAY
+| Base/Delta
+| §3.1.2 (L435-L456), §3.2.8 (L726-L727), §3.3.8 (L838-L839)
+
+| VAL-005
+| `platformManufacturerId` is `ManufacturerId \::= SEQUENCE { manufacturerIdentifier PrivateEnterpriseNumber }`
+| MAY
+| Base/Delta
+| §3.1.2 (L437-L465), Errata 9 (L291-L305)
+
+| VAL-006
+| `tBBSecurityAssertions` structure must match the ASN.1 definition
+| SHOULD (Base) / MUST NOT (Delta)
+| Base/Delta
+| §3.2.10 (L746-L748), §3.1.1 (L333-L334)
+
+| VAL-007
+| `TBBSecurityAssertions.version` must be `v1(0)` (DEFAULT)
+| MUST (if present)
+| Base
+| §3.1.1 (L346, L352-L354)
+
+| VAL-008
+| `FIPSLevel.level` must be in the range `1..4`
+| MAY + valid if present
+| Base
+| §3.1.1 (L416-L425)
+
+| VAL-009
+| `iso9000Certified` must be BOOLEAN, `iso9000Uri` must be IA5String(1..URIMAX)
+| MAY + valid if present
+| Base
+| §3.1.1 (L357-L358)
+
+| VAL-010
+| `EvaluationAssuranceLevel` must be in `1..7`, `StrengthOfFunction` must be in `0..2`
+| MAY + valid if present
+| Base
+| §3.1.1 (L376-L399)
+
+| VAL-011
+| `ComponentIdentifier` requires class/manufacturer/model; status is Delta-only
+| MUST
+| Base/Delta
+| §3.1.6 (L531-L533, L582-L594, L554-L555)
+
+| VAL-012
+| `componentClassRegistry` must conform to the ASN.1-defined OID
+| MUST
+| Base/Delta
+| §3.1.6 (L595-L600)
+
+| VAL-013
+| `componentClassValue` must be `OCTET STRING SIZE(4)`
+| MUST
+| Base/Delta
+| §3.1.6 (L595-L597)
+
+| VAL-014
+| When using `componentPlatformCert`, either `attributeCertIdentifier` or `genericCertIdentifier` is required
+| MUST (conditional)
+| Base/Delta
+| §3.1.6 (L541-L544), (L614-L616)
+
+| VAL-015
+| The current attribute OID is `tcg-at-platformConfiguration-v2`, but the parser should support prior versions
+| SHOULD (emit v2) + SHOULD (accept prior)
+| Base/Delta
+| §3.1.6 (L570-L573), NOTE (L655-L661), OID definition (L928-L929)
+
+| VAL-016
+| `CertificateIdentifier` structure (`attributeCertIdentifier` / `genericCertIdentifier`) validity
+| MUST
+| Base/Delta
+| §3.1.6 (L614-L626)
+
+| VAL-017
+| `StrengthOfFunction` must be `basic/medium/high` (`0..2`)
+| MAY + valid if present
+| Base
+| §3.1.1 (L396-L399)
+|===
+
+=== 5.3 DLT (DLT-001 through DLT-012)
+
+[cols="1,5,1,1,3", options="header"]
+|===
+| ID | Requirement | Level | Applies | Source
+
+| DLT-001
+| Delta `platformConfiguration` is optional, but if present it must contain only the differences from the base
+| MAY (if present MUST be delta-only changes)
+| Delta
+| §2.2.6.13 (L300-L303), Table 4 (L1303-L1308)
+
+| DLT-002
+| Delta must include `tcgCredentialType` (Delta OID)
+| MUST
+| Delta
+| §3.1.4 (L500-L501), §3.3.10 (L847-L848), Table 4 (L1296-L1297)
+
+| DLT-003
+| Delta Serial Number must be a positive integer and unique within the issuer
+| MUST
+| Delta
+| §3.3.2 (L803-L805)
+
+| DLT-004
+| Delta Holder must reference a base Platform/Delta certificate
+| MUST
+| Delta
+| §3.3.4 (L812-L813)
+
+| DLT-005
+| Delta `notAfter` must satisfy the relationship constraint with the base (see Section 8 for conflict interpretation)
+| SHOULD NOT precede / (competing MUST match)
+| Delta
+| §3.3.6 (L823), §2.2.6.10 (L291)
+
+| DLT-006
+| `AttributeStatus` must be one of `added(0)/modified(1)/removed(2)` only
+| MUST
+| Delta
+| §3.1.6 (L628-L631)
+
+| DLT-007
+| The `status` field may only be used in Delta certificates
+| MUST
+| Delta
+| §3.1.6 (L554-L555, L562-L563)
+
+| DLT-008
+| When indicating a change in Delta, a status enumerator must be assigned
+| MUST (conditional)
+| Delta
+| §3.1.6 (L564-L568)
+
+| DLT-009
+| `platformManufacturerStr` must be identical to the base
+| MUST
+| Delta
+| §2.2.6.4 (L266-L267), §3.3.8 (L835-L836)
+
+| DLT-010
+| `platformModel` must be identical to the base
+| MUST
+| Delta
+| §2.2.6.6 (L276), §3.3.8 (L835-L836)
+
+| DLT-011
+| `platformVersion` must be identical to the base
+| MUST
+| Delta
+| §2.2.6.7 (L280-L281), §3.3.8 (L835-L836)
+
+| DLT-012
+| `platformSerial`/`platformManufacturerId`, if present, must be identical to the base
+| MUST (if present)
+| Delta
+| §2.2.6.5 (L271-L272), §2.2.6.12 (L297-L298), §3.3.8 (L838-L840)
+|===
+
+=== 5.4 CHN (CHN-001 through CHN-005)
+
+[cols="1,5,1,1,3", options="header"]
+|===
+| ID | Requirement | Level | Applies | Source
+
+| CHN-001
+| AKI must be non-critical. If the issuer's SKI is available, it must be set in the keyIdentifier; if unavailable, it may be omitted
+| MUST (non-critical) + conditional omit
+| Base/Delta
+| §3.2.11 (L771-L773), §3.3.11 (L858-L860), Table 3/4 (L1136-L1139, L1337-L1340)
+
+| CHN-002
+| AIA must be non-critical; the extension may be omitted. If present, `id-ad-ocsp` and an OCSP responder HTTP URI should be provided
+| SHOULD (if present)
+| Base/Delta
+| §3.2.12 (L775-L778), §3.3.12 (L862-L865)
+
+| CHN-003
+| CRL DP must be non-critical; the extension may be omitted. If present, a CRL distributionPoint URI should be provided. When both AIA/OCSP and CRL DP are present, relying parties should prefer OCSP
+| SHOULD (if present)
+| Base/Delta
+| §3.2.13 (L783-L787), §3.3.13 (L870-L874)
+
+| CHN-004
+| Base must satisfy the EK certificate reference requirement via Holder + TargetingInformation
+| MUST (Base) / MAY (Delta)
+| Base/Delta
+| §3.2.4 (L698-L701), §3.2.9 (L732-L736), §3.3.9 (L844-L845)
+
+| CHN-005
+| If TargetingInformation is present, it must have `critical=TRUE` and `targetName` containing the EK serial RDN
+| MUST (if present)
+| Base/Delta
+| §3.2.9 (L734-L736), §3.3.9 (L844-L845)
+|===
+
+=== 5.5 REG (REG-001 through REG-004)
+
+[NOTE]
+====
+`REG-*` checks are composite requirements derived from the IWG and each Component Class Registry. The default profile is `OperationalCompatibility`. Value definitions for `tcg-registry-componentClass-ietf` are outside the scope of this document.
+====
+
+[cols="1,5,1,1,3", options="header"]
+|===
+| ID | Requirement | Level | Applies | Source
+
+| REG-001
+| `componentClassRegistry` must match the selected registry OID. Under `OperationalCompatibility`, `tcg/ietf/dmtf/pcie/storage` are permitted; under `StrictV11`, only `tcg/ietf/dmtf` are permitted
+| MUST
+| Base/Delta
+| IWG §3.1.6 (L599-L600, L633-L637), TCG Registry §2.1.1 (L194-L199), SMBIOS Registry §2.1.1.1 (L176-L179), PCIe Registry §2.1.1.1 (L174-L178), Storage Registry §2.1.1 (L237-L241)
+
+| REG-002
+| `componentClassValue` must be `OCTET STRING SIZE(4)`. The value and byte representation must be encoded according to the normative tables of the selected registry (registry definition takes precedence over uniform rules)
+| MUST
+| Base/Delta
+| IWG §3.1.6 (L597), TCG Registry §2.2.1 (L211-L217), SMBIOS Table 1 (L281-L284), PCIe Table 1 (L287-L292), Storage Table 1/2/3 (L488-L490, L536-L538, L610-L612)
+
+| REG-003
+| When `componentClassRegistry = tcg-registry-componentClass-tcg`, `componentClassValue` must conform to TCG Registry Table 1 (normative)
+| MUST
+| Base/Delta
+| TCG Registry §2.1.1 (L194-L196), §3 (L233-L234)
+
+| REG-004
+| When `componentClassRegistry = dmtf/pcie/storage`, only the target fields defined by each registry's Translation Table (normative) shall be generated/verified (N/A/no recommendation fields are not binding). For PCIe network controller `addressValue`, the issuer must use uppercase hex without delimiters; verifiers should accept Errata-compatible representations
+| MUST (issuer) + SHOULD (verifier compatibility)
+| Base/Delta
+| SMBIOS §3 Table 1 (L274-L284), PCIe §3 Table 1 (L287-L299), Storage §3/4/5 Table 1/2/3 (L486-L487, L534-L535, L608-L609), Errata Clarification 4 (L109-L122)
+|===
+
+=== 5.6 EXT (EXT-001 through EXT-005)
+
+[cols="1,5,1,1,3", options="header"]
+|===
+| ID | Requirement | Level | Applies | Source
+
+| EXT-001
+| CertificatePolicies must be non-critical, with `policyIdentifier>=1`, `cPSuri` as an HTTP URL, and `userNotice` as a fixed string
+| MUST
+| Base/Delta
+| §3.2.7 (L716-L722), §3.3.7 (L827-L833)
+
+| EXT-002
+| SAN must be non-critical. The directoryName must contain platform* attributes, and in Delta must be identical to the base (RDN attribute ordering is not significant)
+| MUST
+| Base/Delta
+| §3.2.8 (L723-L730), §3.3.8 (L835-L842), Errata Clarification 7 (L149-L152)
+
+| EXT-003
+| The `userNotice` explicit text must be `TCG Trusted Platform Endorsement` (a separate concept from the Certificate Type OID)
+| MUST
+| Base/Delta
+| §3.2.7 (L720), §3.3.7 (L831), Errata Clarification 5/6 (L123-L148), Errata 7 (L230-L237)
+
+| EXT-004
+| Issuer Unique ID must be omitted
+| MUST NOT
+| Base/Delta
+| §3.2.14 (L788-L790), §3.3.14 (L875-L877)
+
+| EXT-005
+| If TargetingInformation is present, critical must be TRUE
+| MUST (if present)
+| Base/Delta
+| §3.2.9 (L734), §3.3.9 (L844-L845)
+|===
+
+=== 5.7 SEC (SEC-001 through SEC-005)
+
+[cols="1,5,1,1,3", options="header"]
+|===
+| ID | Requirement | Level | Applies | Source
+
+| SEC-001
+| Delta must not include `tBBSecurityAssertions`
+| MUST NOT
+| Delta
+| §3.1.1 (L333-L334)
+
+| SEC-002
+| Delta must not include `TCGPlatformSpecification`
+| MUST NOT
+| Delta
+| §3.1.3 (L481-L482)
+
+| SEC-003
+| `MeasurementRootType` must be within the enumeration range `0..5`
+| MUST (if present)
+| Base
+| §3.1.1 (L365-L371)
+
+| SEC-004
+| When both `profileOid/profileUri` and `targetOid/targetUri` pairs are present, they must be semantically consistent
+| MUST (if both present)
+| Base
+| §3.1.1 (L328-L330)
+
+| SEC-005
+| All `URIReference` instances must satisfy the hash pair co-existence constraint
+| MUST
+| Base/Delta
+| §3.1.1 (L402-L407)
+|===
+
+=== 5.8 ERR (ERR-001 through ERR-005)
+
+[NOTE]
+====
+`ERR-*` checks codify the correction requirements from Errata v3.
+====
+
+[cols="1,5,1,1,3", options="header"]
+|===
+| ID | Requirement | Level | Applies | Source
+
+| ERR-001
+| Verification of `componentIdentifiers` must be order-independent (fixed ordering must not be required)
+| MUST
+| Base/Delta
+| Errata 1 (L159-L168)
+
+| ERR-002
+| `ComponentAddress.addressValue` should accept the multiple MAC string representations listed in the Errata
+| SHOULD (verifier capability)
+| Base/Delta
+| Errata Clarification 4 (L106-L123)
+
+| ERR-003
+| `PrivateEnterpriseNumber` must be interpreted and validated as an `OBJECT IDENTIFIER`
+| MUST
+| Base/Delta
+| Errata 9 (L291-L305)
+
+| ERR-004
+| `baseCertificateID` must include the TPM EK issuer/serial; when referencing component certificates, `attributeCertificateIdentifier` or `genericCertIdentifier` must be included
+| MUST
+| Base/Delta
+| Errata Clarification 1 (L92-L94), Errata 4 (L191-L206)
+
+| ERR-005
+| `tcg-address-ethernetmac` / `tcg-address-wlanmac` / `tcg-address-bluetoothmac` permit only 48-bit MACs
+| MUST
+| Base/Delta
+| Errata 6 (L225-L229)
+|===
+
+== 6. Requirements That Need Manual Evidence
+
+The following cannot be fully verified through static ASN.1 validation alone and require manual evidence or operational data:
+
+. Serial Number uniqueness within the issuer (requires multiple issuance history records)
+. `policyIdentifier` "acceptable" determination (depends on Relying Party policy, L721/L833)
+. Semantic consistency of `CommonCriteriaMeasures` OID and URI (L328-L330)
+. Availability and response validity of OCSP/CRL endpoints (L779-L787, L866-L874)
+. Authenticity of the base certificate referenced by a Delta (chain validation and revocation checking through operational coordination)
+. Conversion validity from SMBIOS/PCIe/ATA/SCSI/NVMe raw data (REG-004) cannot be fully verified from the certificate alone; raw data evidence is required
+
+=== 6.1 Normative Clauses Not Yet Mapped to Dedicated Check IDs
+
+The following have normative provisions in the primary sources but are not separated into dedicated IDs within the 66 checks of this document:
+
+. In Base certificates, legacy compatibility attributes (TCPA spec version, TPM/TBB protection profile, etc.) SHOULD NOT be included (§3.2.10, L754-L769)
+. Value definitions for `tcg-registry-componentClass-ietf` are outside the scope of this document (to be separately defined by the IETF-side registry specification)
+
+== 7. Test Data Obligations
+
+Test sets based on this specification must include at minimum the following:
+
+* Base positive cases (containing all required attributes/extensions)
+* Delta positive cases (with base comparison, change differences + status present)
+* Delta negative cases (base comparison mismatch, invalid status, prohibited attribute inclusion)
+* ASN.1 boundary values (`STRMAX/URIMAX`, out-of-range ENUM, empty values, missing one side of a hash pair)
+* DER negative cases (invalid length, invalid tag, invalid character type, oversized input)
+
+== 8. Mandatory Ambiguity Handling
+
+=== 8.1 Delta `notAfter` requirement conflict (DLT-005)
+
+IWG R19 contains the following conflict:
+
+* §2.2.6.10: `notAfter` *MUST match* the base (L291)
+* §3.3.6: `notAfter` *SHOULD NOT precede* the base (L823)
+
+Rules applied in this specification:
+
+. The default compliance assessment adopts §3.3.6, treating `SHOULD NOT precede` as `Recommended`.
+. As an optional additional strict assessment profile, §2.2.6.10's `MUST match` may be applied.
+. The audit output must always state which assessment criterion was used.
+
+=== 8.2 Delta Name Attributes optionality conflict
+
+* §3.1.2 states "These attributes MUST be included in the Delta Platform Certificate" (L439)
+* However, the same section describes `platformSerial` and `platformManufacturerId` as OPTIONAL (L435-L438)
+* SAN definitions also treat serial/manufacturerId as optional (L726-L728, L838-L840)
+
+Rules applied in this specification:
+
+. For Delta, `manufacturer/model/version` are required.
+. `serial/manufacturerId`, if present, must be syntactically valid and match the base.
+. When absent, they are treated as `Optional`, but operational requirements may override this to mandatory via profile configuration.
+
+=== 8.3 `platformConfiguration` OID version handling
+
+* The current ASN.1 attribute ID is `tcg-at-platformConfiguration-v2` (L570-L573, L928-L929)
+* However, a NOTE advises the parser to consider prior version support (L655-L661)
+
+Rules applied in this specification:
+
+. For issuer conformance, emitting v2 is recommended (`SHOULD emit v2`).
+. For verifier conformance, the ability to accept v1/v2 is recommended (`SHOULD parse prior versions`).
+. The detected OID must be recorded in the inspection results upon acceptance.
+
+=== 8.4 Authority Key Identifier interpretation
+
+* Tables 3/4 indicate AKI as `MUST` (L1136-L1139, L1337-L1340)
+* §3.2.11/§3.3.11 state "set keyIdentifier if the issuer certificate's SKI is available; if unavailable, omission is permitted" (L771-L773, L858-L860)
+
+Rules applied in this specification:
+
+. AKI criticality must be `FALSE`.
+. `keyIdentifier` is required when the issuer's SKI can be obtained.
+. Omission of `keyIdentifier` is permitted only when the issuer's SKI cannot be obtained.
+
+=== 8.5 Issuer Unique ID conflict
+
+* Table 3 can be read as `SHOULD NOT` for Issuer Unique ID (L1147-L1152)
+* §3.2.14/§3.3.14 specify that Issuer Unique ID `MUST be omitted` (L788-L790, L875-L877)
+
+Rules applied in this specification:
+
+. The body text sections (§3.2.14/§3.3.14) take precedence, and the assessment is `MUST NOT include`.
+
+=== 8.6 Errata v3 integration rules
+
+* Clarification 2: Appendix sample certificate values are informative and must not be used as a conformance basis (L95-L100).
+* Clarification 3: Extension of profile-defined sequences/attributes is not intended; therefore, proprietary extensions cannot serve as a conformance basis (L101-L105).
+* Errata 8/11/12/13: ASN.1 name/OID typographical errors are corrected by the post-Errata definitions, which are treated as authoritative (L237-L286, L468-L520).
+
+=== 8.7 Registry MAC format policy
+
+* The PCIe Registry specifies that the network controller's `componentAddresses.addressValue` uses uppercase hexadecimal without delimiters (L296-L299).
+* Errata Clarification 4 requires verifiers to be capable of accepting multiple MAC string representations (L106-L123).
+
+Rules applied in this specification:
+
+. For issuer conformance assessment, the canonical format defined in the PCIe registry specification is required.
+. For verifier interoperability assessment, the ability to accept the MAC representations listed in the Errata is recommended.
+. This acceptance capability check (`ERR-002`) is treated as `SHOULD` (Recommended) and does not independently result in a Non-compliant determination.
+
+=== 8.8 Registry OID compatibility profile
+
+* The IWG v1.1 body text defines `ComponentClassRegistry` as `tcg/ietf/dmtf`.
+* Subsequent registries (PCIe/Storage) are used in implementation and verification practice as operational extensions after v1.1.
+
+Rules applied in this specification:
+
+. The default assessment is `OperationalCompatibility`, which permits `tcg/ietf/dmtf/pcie/storage`.
+. As an optional additional assessment, `StrictV11` may be applied, permitting only `tcg/ietf/dmtf`.
+. The audit output must always state which profile was used for the pass/fail determination.
+
+== 9. Coverage Summary
+
+* STR: 13
+* VAL: 17
+* DLT: 12
+* CHN: 5
+* REG: 4
+* EXT: 5
+* SEC: 5
+* ERR: 5
+* *Total: 66 checks*
+
+This specification is defined in a clause-traceable manner using IWG R19 + Errata v3 + Component Class Registries (TCG/SMBIOS/PCIe/Storage) as primary normative sources.
+`REG-*` checks are explicitly marked as registry-specific specification dependencies, and `ERR-*` checks are explicitly marked as Errata v3 dependencies; normative basis must be provided at the time of application.
+
+[appendix]
+== Normative Source Text References
+
+This appendix lists verbatim excerpts from the primary source documents corresponding to each check ID.
+
+Legend for source abbreviations:
+
+* *IWG* = IWG Platform Certificate Profile v1.1 R19
+* *Errata* = Errata for TCG Platform Certificate Profile v1.1 R19, Errata Version 3.0
+* *TCG Reg* = TCG Component Class Registry v1.0 rev14
+* *SMBIOS Reg* = SMBIOS-based Component Class Registry v1.01
+* *PCIe Reg* = PCIe-based Component Class Registry v1.0 r18
+* *Storage Reg* = Storage Component Class Registry v1.0 rev22
+
+=== A.1 Global ASN.1/DER Constraints (G-001 -- G-006)
+
+[cols="1,5a"]
+|===
+| ID | Source Text
+
+| G-001
+| IWG §3 (L315-L317): +
+_"This section contains the format for the Platform Attribute Certificate instantiated as an X.509 certificate for all the common and information fields in this specification. All fields are defined in ASN.1 and encoded using DER."_
+
+| G-002
+| IWG §3.1.1 (L402-L407): +
+_"The hashAlgorithm and hashValue MUST both exist in each reference if either appear at all. +
+URIReference ::= SEQUENCE { +
+{nbsp}{nbsp}uniformResourceIdentifier IA5String (SIZE (1..URIMAX)), +
+{nbsp}{nbsp}hashAlgorithm AlgorithmIdentifier OPTIONAL, +
+{nbsp}{nbsp}hashValue BIT STRING OPTIONAL }"_
+
+| G-003
+| IWG §3.1.1 (L336-L341): +
+_"URIMAX is a constant used to provide an upper bound on the length of a URI included in the certificate. This upper bound is helpful to consumers of the extension and also helps limit the overall size of the certificate. In order to provide a reasonable upper bound for ASN.1 parsers, URIMAX SHOULD NOT exceed a value of 1024. This value was selected as it matches the length limit for <A> anchors in HTML as specified by the SGML declaration (LITLEN) for HTML[5]."_
+
+| G-004
+| IWG §3.1.1 (L342-L345): +
+_"STRMAX is a constant defining the upper bound on the length of a string type. Like the URIMAX this is to aid ASN.1 parsers and help limit the upper bound on the length of the certificate. Based on the expected sizes of the strings in the ASN.1 in this document an upper bound of 256 was selected. STRMAX SHOULD NOT exceed a value of 256."_
+
+| G-005
+| IWG §3.1.6 (L650-L652): +
+_"Since the algorithms used are all hashing algorithms, the parameters field SHOULD not be used. The issuer MAY utilize any of the hash algorithm OIDs found in RFC3279 [15], RFC4055 [16], SHA-3 Related Algorithms and Identifiers for PKIX [17], and GB/T 33560-2017 [18]."_
+
+| G-006
+| IWG §3.1.6 NOTE (L655-L661): +
+_"NOTE: Parsers and verifiers should be version aware, and make the necessary adjustments to support current and prior versions of the platformConfiguration attribute. Future versions of this specification could introduce modifications to the platformConfiguration attribute. If such changes impact the structure and semantics of existing fields (componentIdentifiers, componentIdentifiersURI, platformProperties, and platformPropertiesURI) the attribute's OID will be updated to the next version (tcg-at-platformConfiguration-v3)."_
+|===
+
+=== A.2 STR (STR-001 -- STR-013)
+
+[cols="1,5a"]
+|===
+| ID | Source Text
+
+| STR-001
+| IWG §3.2.1 (L686-L687): +
+_"...the version number MUST be set to 2 (which is encoded as the value 1 in ASN.1)."_ +
+IWG §3.3.1 (L800-L801): +
+_"The Delta Platform Certificate version number MUST be set to 2 (which is encoded as the value 1 in ASN.1)."_
+
+| STR-002
+| IWG §3.2.4 (L698-L700): +
+_"This field contains a reference to one of the required X.509 TPM EK certificates. The BaseCertificateID choice MUST be used. Additional required TPM EK certificates MUST be referenced using the TargetingInformation extension."_ +
+IWG §3.3.4 (L812-L813): +
+_"This field contains a reference to the base Platform Certificate or base Delta Platform Certificate. The BaseCertificateID choice MUST be used."_ +
+Errata Clarification 1 (L92-L94): +
+_"In order to encode the TPM EK Certificate information in the Platform Certificate's Holder field, the issuer must use the baseCertificateID option as defined in RFC5755. The TPM EK certificate's Issuer and Serial number must be included in the baseCertificateID."_
+
+| STR-003
+| IWG §3.2.5 (L705-L707): +
+_"This field contains the distinguished name of the entity that issued this Platform Certificate. This is the entity that asserts that the platform incorporates a TPM and RTM in a manner that conforms to the relevant TCG Platform Specific specification."_ +
+IWG §3.3.5 (L815-L818): +
+_"This field contains the distinguished name of the entity that issued this Delta Platform Certificate. This is the entity that asserts that the changes made to the platform are correctly reflected in this certificate, and that it references the appropriate base Platform or Delta Certificate."_
+
+| STR-004
+| IWG §3.2.3 (L694-L696): +
+_"This OID identifies the algorithm used by the platform certificate issuer to sign the certificate. Platform Certificate verifiers MUST support certificates signed with algorithms available in the TCG Algorithm Registry [12]."_ +
+IWG §3.3.3 (L808-L810): +
+_"This OID identifies the algorithm used by the Delta Platform Certificate issuer to sign the certificate. Delta Platform Certificate verifiers MUST support certificates signed with algorithms available in the TCG Algorithm Registry [12]."_
+
+| STR-005
+| IWG §3.2.2 (L689-L691): +
+_"The serial number MUST be a positive integer which is uniquely assigned to each certificate by the issuer. The combination of an issuer's DN and the serial number MUST uniquely describe a single certificate."_ +
+IWG §3.3.2 (L803-L805): +
+_"The serial number MUST be a positive integer which is uniquely assigned to each certificate by the issuer. The combination of an issuer's DN and the serial number MUST uniquely describe a single certificate."_
+
+| STR-006
+| IWG §3.2.6 (L711-L714): +
+_"Issuers SHOULD assign notBefore to the current time when the certificate is issued and notAfter to the last date that the certificate will be considered valid. Both notBefore and notAfter MUST use the appropriate time format as indicated by RFC 5755 [11], section 4.2.6 Validity Period."_ +
+IWG §3.3.6 (L821-L825): +
+_"Issuers SHOULD assign notBefore to the current time when the certificate is issued and notAfter to the last date that the certificate will be considered valid. The notAfter date SHOULD not precede that of the base certificate. Both notBefore and notAfter MUST use the appropriate time format as indicated by RFC 5755 [11], section 4.2.6 Validity Period."_
+
+| STR-007
+| IWG §3.2.10 (L739-L748): +
+_"The following attributes SHOULD be included: The 'TCG Platform Specification' attribute..., The 'TCG Certificate Type' attribute..., The 'TCG Certificate Specification' attribute..., The platform 'TBB Security Assertions' attribute..."_ +
+IWG §3.3.10 (L847-L850): +
+_"The following attributes SHOULD be included: The 'TCG Certificate Type' attribute identifies the type of certificate and its format. The 'TCG Certificate Specification' attribute references the version, level, and revision of this specification."_
+
+| STR-008
+| IWG §3.2 preamble (L678-L679): +
+_"This certificate format adheres to RFC 5755 [11] and all requirements and limitations from that specification apply unless otherwise noted."_ +
+IWG §3.3 preamble (L793-L794): +
+_"This certificate format adheres to RFC 5755 [11] and all requirements and limitations from that specification apply unless otherwise noted."_
+
+| STR-009
+| (Same normative basis as STR-008) +
+IWG §3.2 preamble (L678-L679) / §3.3 preamble (L793-L794): +
+_"This certificate format adheres to RFC 5755 [11] and all requirements and limitations from that specification apply unless otherwise noted."_
+
+| STR-010
+| IWG §3.1.7 (L662-L673): +
+_"The PlatformConfigUri attribute contains the URI where the reference integrity measurements could be obtained by the verifier. The format used to convey the reference measurement values is vendor specific and not defined by the TCG. This field uses an URIReference sequence."_ +
+_"The PlatformConfigUri attribute MAY be included in the Delta Platform Certificate to assert changes to the URI where PCR values are published."_ +
+IWG §3.1.1 (L402-L407): +
+_"The hashAlgorithm and hashValue MUST both exist in each reference if either appear at all."_
+
+| STR-011
+| IWG §3.2.10 (L740-L742): +
+_"The 'TCG Platform Specification' attribute references the platform class, version and revision level of the TCG platform-specific specification to which the platform was designed."_ +
+IWG §3.1.3 (L481-L482): +
+_"This attribute MUST NOT be included in the Delta Platform Certificate."_
+
+| STR-012
+| IWG §3.2.10 (L743): +
+_"The 'TCG Certificate Type' attribute identifies the type of certificate and its format."_ +
+IWG §3.1.4 (L500-L501): +
+_"This attribute MUST be included in the Delta Platform Certificate to differentiate from a Platform Certificate."_ +
+IWG §3.3.10 (L847-L848): +
+_"The following attributes SHOULD be included: The 'TCG Certificate Type' attribute identifies the type of certificate and its format."_
+
+| STR-013
+| IWG §3.2.10 (L744-L745): +
+_"The 'TCG Certificate Specification' attribute references the version, level, and revision of this specification."_ +
+IWG §3.1.5 (L516-L517): +
+_"This attribute MAY be included in the Delta Platform Certificate if issued under a different specification version than the base certificate."_ +
+Table 4 (L798): +
+_"TCG Certificate Specification -- majorVersion, minorVersion, revision -- Major, minor, and revision of the Platform Certificate spec under which this certificate was issued -- MAY (If different from base Platform Certificate)"_
+|===
+
+=== A.3 VAL (VAL-001 -- VAL-017)
+
+[cols="1,5a"]
+|===
+| ID | Source Text
+
+| VAL-001
+| IWG §3.1.2 (L430-L444): +
+_"The value of the PlatformManufacturerStr attribute is a UTF 8 string with the name of platform manufacturing company."_ +
+_"PlatformManufacturerStr ATTRIBUTE ::= { WITH SYNTAX UTF8String (SIZE (1..STRMAX)) ID tcg-at-platformManufacturerStr }"_
+
+| VAL-002
+| IWG §3.1.2 (L432-L448): +
+_"The PlatformModel attribute is a UTF 8 string with the manufacturer-specific model."_ +
+_"PlatformModel ATTRIBUTE ::= { WITH SYNTAX UTF8String (SIZE (1..STRMAX)) ID tcg-at-platformModel }"_
+
+| VAL-003
+| IWG §3.1.2 (L433-L452): +
+_"The PlatformVersion attribute is a UTF 8 string with manufacturer-specific platform version value."_ +
+_"PlatformVersion ATTRIBUTE ::= { WITH SYNTAX UTF8String (SIZE (1..STRMAX)) ID tcg-at-platformVersion }"_
+
+| VAL-004
+| IWG §3.1.2 (L435-L456): +
+_"The PlatformSerial optional attribute is a UTF 8 string with manufacturer-specific platform serial number value."_ +
+_"PlatformSerial ATTRIBUTE ::= { WITH SYNTAX UTF8String (SIZE (1..STRMAX)) ID tcg-at-platformSerial }"_ +
+IWG §3.2.8 (L726-L727): +
+_"...and optionally, the serial number, and manufacturer ID."_ +
+IWG §3.3.8 (L838-L839): +
+_"...and optionally, the serial number, and manufacturer ID."_
+
+| VAL-005
+| IWG §3.1.2 (L437-L465): +
+_"The PlaftformManufacturerId optional attribute is the OID of the IANA Private Enterprise Number [8] assigned to the platform manufacturer."_ +
+_"ManufacturerId ::= SEQUENCE { manufacturerIdentifier PrivateEnterpriseNumber }"_ +
+Errata 9 (L291-L305): +
+_"Section 3.1.2 incorrectly defines the type PrivateEnterpriseNumber. The manufacturerIdentifier value, of type PrivateEnterpriseNumber, equals one of the IANA private enterprise numbers assigned to the manufacturer of the platform. Change to: 'PrivateEnterpriseNumber ::= OBJECT IDENTIFIER'"_
+
+| VAL-006
+| IWG §3.2.10 (L746-L748): +
+_"The platform 'TBB Security Assertions' attribute describes various assertions about the security properties of the TBB of the platform."_ +
+IWG §3.1.1 (L333-L334): +
+_"The tBBSecurityAssertions attribute MUST NOT be included in the Delta Platform Certificate."_
+
+| VAL-007
+| IWG §3.1.1 (L346, L352-L354): +
+_"Version ::= INTEGER { v1(0) }"_ +
+_"TBBSecurityAssertions ::= SEQUENCE { version Version DEFAULT v1, ccInfo [0] IMPLICIT CommonCriteriaMeasures OPTIONAL, fipsLevel [1] IMPLICIT FIPSLevel OPTIONAL, ... }"_
+
+| VAL-008
+| IWG §3.1.1 (L416-L425): +
+_"FIPSLevel ::= SEQUENCE { version IA5STRING (SIZE (1..STRMAX)), pass:[--] '140-1', '140-2', or '140-3' level SecurityLevel, plus BOOLEAN DEFAULT FALSE }"_ +
+_"SecurityLevel ::= ENUMERATED { level1 (1), level2 (2), level3 (3), level4 (4) }"_
+
+| VAL-009
+| IWG §3.1.1 (L357-L358): +
+_"iso9000Certified BOOLEAN DEFAULT FALSE, iso9000Uri IA5STRING (SIZE (1..URIMAX) OPTIONAL }"_
+
+| VAL-010
+| IWG §3.1.1 (L376-L399): +
+_"EvaluationAssuranceLevel ::= ENUMERATED { levell (1), level2 (2), level3 (3), level4 (4), level5 (5), level6 (6), level7 (7) }"_ +
+_"StrengthOfFunction ::= ENUMERATED { basic (0), medium (1), high (2) }"_
+
+| VAL-011
+| IWG §3.1.6 (L531-L533): +
+_"The issuer MUST include the component class, manufacturer and model, and optionally provide the component serial number, revision, and the component manufacturer's IANA PrivateEnterpriseNumber."_ +
+IWG §3.1.6 (L582-L594): +
+_"ComponentIdentifier ::= SEQUENCE { componentClass ComponentClass, componentManufacturer UTF8String (SIZE (1..STRMAX)), componentModel UTF8String (SIZE (1..STRMAX)), ... status [7] IMPLICIT AttributeStatus OPTIONAL }"_ +
+IWG §3.1.6 (L554-L555): +
+_"The status field contained within the componentIdentifier field MUST be used only in Delta Platform Certificates."_
+
+| VAL-012
+| IWG §3.1.6 (L595-L600): +
+_"ComponentClass ::= SEQUENCE { componentClassRegistry ComponentClassRegistry, componentClassValue OCTET STRING SIZE(4) }"_ +
+_"ComponentClassRegistry ::= OBJECT IDENTIFIER ( tcg-registry-componentClass-tcg \| tcg-registry-componentClass-ietf \| tcg-registry-componentClass-dmtf )"_
+
+| VAL-013
+| IWG §3.1.6 (L595-L597): +
+_"ComponentClass ::= SEQUENCE { componentClassRegistry ComponentClassRegistry, componentClassValue OCTET STRING SIZE(4) }"_
+
+| VAL-014
+| IWG §3.1.6 (L541-L544): +
+_"The componentPlatformCert field contains information about the component's Platform Certificate. This field allows the issuer to create a hierarchy of platforms by constructing a general tree of Platform Certificates. The issuer MUST include attributeCertificateIdentifier or genericCertIdentifier to provide a reference to the component's Platform Certificate."_ +
+IWG §3.1.6 (L614-L616): +
+_"CertificateIdentifier::= SEQUENCE { attributeCertIdentifier [0] IMPLICIT AttributeCertificateIdentifier OPTIONAL, genericCertIdentifier [1] IMPLICIT IssuerSerial OPTIONAL }"_
+
+| VAL-015
+| IWG §3.1.6 (L570-L573): +
+_"platformConfiguration ATTRIBUTE ::= { WITH SYNTAX PlatformConfiguration ID tcg-at-platformConfiguration-v2 }"_ +
+NOTE (L655-L661): +
+_"NOTE: Parsers and verifiers should be version aware, and make the necessary adjustments to support current and prior versions of the platformConfiguration attribute. Future versions of this specification could introduce modifications to the platformConfiguration attribute. If such changes impact the structure and semantics of existing fields (componentIdentifiers, componentIdentifiersURI, platformProperties, and platformPropertiesURI) the attribute's OID will be updated to the next version (tcg-at-platformConfiguration-v3)."_ +
+OID definition (L928-L929): +
+_"tcg-at-platformConfiguration-v1 OBJECT IDENTIFIER ::= {tcg-at-platformConfiguration 1} +
+tcg-at-platformConfiguration-v2 OBJECT IDENTIFIER ::= {tcg-at-platformConfiguration 2}"_
+
+| VAL-016
+| IWG §3.1.6 (L614-L626): +
+_"CertificateIdentifier::= SEQUENCE { attributeCertIdentifier [0] IMPLICIT AttributeCertificateIdentifier OPTIONAL, genericCertIdentifier [1] IMPLICIT IssuerSerial OPTIONAL }"_ +
+_"AttributeCertificateIdentifier ::= SEQUENCE { hashAlgorithm AlgorithmIdentifier, hashOverSignatureValue OCTET STRING }"_ +
+_"IssuerSerial ::= SEQUENCE { issuer GeneralNames, serial CertificateSerialNumber }"_
+
+| VAL-017
+| IWG §3.1.1 (L396-L399): +
+_"StrengthOfFunction ::= ENUMERATED { basic (0), medium (1), high (2) }"_
+|===
+
+=== A.4 DLT (DLT-001 -- DLT-012)
+
+[cols="1,5a"]
+|===
+| ID | Source Text
+
+| DLT-001
+| IWG §2.2.6.13 (L300-L303): +
+_"This field contains assertions of properties that are not security related. The Delta Platform Certificate MUST only include platform properties that have changed (added, modified, or deleted) with respect to the base certificate."_ +
+Table 4 (L1303-L1308): +
+_"Platform Configuration -- componentIdentifier, platformProperties, platformPropertiesUri -- Changes to platform components and properties MAY be reflected by this attribute -- MAY (If different from base Platform Certificate)"_
+
+| DLT-002
+| IWG §3.1.4 (L500-L501): +
+_"This attribute MUST be included in the Delta Platform Certificate to differentiate from a Platform Certificate."_ +
+IWG §3.3.10 (L847-L848): +
+_"The following attributes SHOULD be included: The 'TCG Certificate Type' attribute identifies the type of certificate and its format."_ +
+Table 4 (L1296-L1297): +
+_"TCG Certificate Type -- credentialType -- Identifies the Delta Platform Certificate -- MUST"_
+
+| DLT-003
+| IWG §3.3.2 (L803-L805): +
+_"The serial number MUST be a positive integer which is uniquely assigned to each certificate by the issuer. The combination of an issuer's DN and the serial number MUST uniquely describe a single certificate."_
+
+| DLT-004
+| IWG §3.3.4 (L812-L813): +
+_"This field contains a reference to the base Platform Certificate or base Delta Platform Certificate. The BaseCertificateID choice MUST be used."_
+
+| DLT-005
+| IWG §3.3.6 (L823): +
+_"The notAfter date SHOULD not precede that of the base certificate."_ +
+IWG §2.2.6.10 (L291): +
+_"The validity period's 'Not After' date MUST match that of the base certificate."_
+
+| DLT-006
+| IWG §3.1.6 (L628-L631): +
+_"AttributeStatus ::= ENUMERATED { added (0), modified (1), removed (2) }"_
+
+| DLT-007
+| IWG §3.1.6 (L554-L555): +
+_"The status field contained within the componentIdentifier field MUST be used only in Delta Platform Certificates."_ +
+IWG §3.1.6 (L562-L563): +
+_"The status field contained within the Properties field MUST be used only in Delta Platform Certificates."_
+
+| DLT-008
+| IWG §3.1.6 (L564-L568): +
+_"The platformConfiguration attribute MAY be included in the Delta Platform Certificate to reflect changes made to the componentIdentifiers, componentIdentifiersUri, platformProperties, and platformPropertiesUri fields. In this case, the status enumerator MUST be included to indicate whether the field was added, modified, or removed from the base certificate."_
+
+| DLT-009
+| IWG §2.2.6.4 (L266-L267): +
+_"This field MUST equal that of the base Platform Certificate or base Delta Platform Certificate."_ +
+IWG §3.3.8 (L835-L836): +
+_"This extension contains the platform name attributes. This extension MUST equal that of the base Platform or Delta Platform Certificate, the issuer MUST NOT introduce any changes."_
+
+| DLT-010
+| IWG §2.2.6.6 (L276): +
+_"This field MUST equal that of the base Platform Certificate or base Delta Platform Certificate."_ +
+IWG §3.3.8 (L835-L836): +
+_"This extension contains the platform name attributes. This extension MUST equal that of the base Platform or Delta Platform Certificate, the issuer MUST NOT introduce any changes."_
+
+| DLT-011
+| IWG §2.2.6.7 (L280-L281): +
+_"This field MUST equal that of the base Platform Certificate or base Delta Platform Certificate."_ +
+IWG §3.3.8 (L835-L836): +
+_"This extension contains the platform name attributes. This extension MUST equal that of the base Platform or Delta Platform Certificate, the issuer MUST NOT introduce any changes."_
+
+| DLT-012
+| IWG §2.2.6.5 (L271-L272): +
+_"This field MUST equal that of the base Platform Certificate or base Delta Platform Certificate."_ +
+IWG §2.2.6.12 (L297-L298): +
+_"This field MUST equal that of the base Platform Certificate or base Delta Platform Certificate."_ +
+IWG §3.3.8 (L838-L840): +
+_"...and optionally, the serial number, and manufacturer ID. The 'Platform Manufacturer Identifier' optional field uniquely identifies the platform's manufacturer using the IANA Private Enterprise Number OID [8]."_
+|===
+
+=== A.5 CHN (CHN-001 -- CHN-005)
+
+[cols="1,5a"]
+|===
+| ID | Source Text
+
+| CHN-001
+| IWG §3.2.11 (L771-L773): +
+_"This extension identifies the subject public key of the certificate issuer. Assign 'critical' the value FALSE. Assign the value of 'subject key identifier' from the issuer's public-key certificate, if available, else omit."_ +
+IWG §3.3.11 (L858-L860): +
+_"This extension identifies the subject public key of the certificate issuer. Assign 'critical' the value FALSE. Assign the value of 'subject key identifier' from the issuer's public-key certificate, if available, else omit."_ +
+Table 3/4 (L1136-L1139, L1337-L1340): +
+_"Authority Key Id -- AuthorityKeyIdentifier -- Key identifier, Issuer name and serial number -- MUST, non-critical (optional)"_
+
+| CHN-002
+| IWG §3.2.12 (L775-L778): +
+_"This extension contains additional information about the issuer. Assign 'critical' the value FALSE. It MAY be omitted. If included, then the accessMethod OID SHOULD be set to id-ad-ocsp (RFC 5755 [11]) and the accessLocation value SHOULD point to the access value of the OCSP responder (HTTP URI)."_ +
+IWG §3.3.12 (L862-L865): +
+_"This extension contains additional information about the issuer. Assign 'critical' the value FALSE. This extension MAY be omitted. If included, then the accessMethod OID SHOULD be set to id-ad-ocsp (RFC 5755 [11]) and the accessLocation value SHOULD point to the access value of the OCSP responder (HTTP URI)."_
+
+| CHN-003
+| IWG §3.2.13 (L783-L787): +
+_"This extension provides the location of the subject's revocation information. Assign 'critical' the value FALSE. The relying party can access the CRL for this certificate from this URI. If both a CDP and OCSP AIA extension are present in the certificate, then relying parties SHOULD use OCSP as the primary validation mechanism."_ +
+IWG §3.3.13 (L870-L874): +
+_"This extension provides the location of the subject's revocation information. Assign 'critical' the value FALSE. The relying party can access the CRL for this certificate from this URI. If both a CDP and OCSP AIA extension are present in the certificate, then relying parties SHOULD use OCSP as the primary validation mechanism."_
+
+| CHN-004
+| IWG §3.2.4 (L698-L701): +
+_"This field contains a reference to one of the required X.509 TPM EK certificates. The BaseCertificateID choice MUST be used. Additional required TPM EK certificates MUST be referenced using the TargetingInformation extension. Optional EK certificates MAY be referenced using the TargetingInformation extension."_ +
+IWG §3.2.9 (L732-L736): +
+_"This extension contains references to additional EK certificates not included in the Holder field. This extension is implemented using AC Targeting extension defined in RFC5755 [11]. This extension is OPTIONAL, but if included, assign 'critical' the value of TRUE."_ +
+IWG §3.3.9 (L844-L845): +
+_"This extension contains references to additional EK certificates issued by the Delta Platform Certificate issuer. Refer to section 3.2.9 for details on how to implement this extension."_
+
+| CHN-005
+| IWG §3.2.9 (L734-L736): +
+_"This extension is OPTIONAL, but if included, assign 'critical' the value of TRUE. Use the targetName option. The EK certificate serial number MUST be included by adding the RDN attribute serialNumber to the GeneralName."_ +
+IWG §3.3.9 (L844-L845): +
+_"This extension contains references to additional EK certificates issued by the Delta Platform Certificate issuer. Refer to section 3.2.9 for details on how to implement this extension."_
+|===
+
+=== A.6 REG (REG-001 -- REG-004)
+
+[cols="1,5a"]
+|===
+| ID | Source Text
+
+| REG-001
+| IWG §3.1.6 (L599-L600): +
+_"ComponentClassRegistry ::= OBJECT IDENTIFIER ( tcg-registry-componentClass-tcg \| tcg-registry-componentClass-ietf \| tcg-registry-componentClass-dmtf )"_ +
+IWG §3.1.6 (L633-L637): +
+_"Three ComponentClassRegistry OIDs have been defined by the TCG. The tcg-registry-componentClass-tcg is a placeholder that refers to a future TCG Component Class Registry. The tcg-registry-componentClass-ietf refers to the IETF RFC8348 [19] IANA Hardware Class. The tcg-registry-componentClass-dmtf is a placeholder to refer to a future SMBIOS based registry."_ +
+TCG Reg §2.1.1 (L194-L199): +
+_"The OBJECT IDENTIFIER tcg-registry-componentClass-tcg SHALL be used in the componentClassRegistry field of a ComponentIdentifier SEQUENCE that uses the registry defined by this specification. If the registry defined by this specification is identified via the componentClassRegistry field of a componentIdentifier, the values defined in this specification SHALL be used for the associated componentClassValue's field."_ +
+SMBIOS Reg §2.1.1.1 (L176-L179): +
+_"The OBJECT IDENTIFIER that SHALL be used in the componentClassRegistry field to identify this registry is tcg-registry-componentClass-dmtf. If this registry is identified via the componentClassRegistry field of a componentIdentifier, the values and encoding defined in this specification SHALL be used for the specified componentIdentifier's fields."_ +
+PCIe Reg §2.1.1.1 (L174-L178): +
+_"The OBJECT IDENTIFIER tcg-registry-componentClass-pcie SHALL be used in the componentClassRegistry field to identify the registry defined by this specification. If the registry defined by this specification is identified via the componentClassRegistry field of a componentIdentifier, the encoding defined in this specification SHALL be used for the specified componentIdentifier's fields."_ +
+Storage Reg §2.1.1 (L237-L241): +
+_"The OBJECT IDENTIFIER tcg-registry-componentClass-storage SHALL be used in the componentClassRegistry field to identify the registry defined by this specification. If the registry defined by this specification is identified via the componentClassRegistry field of a componentIdentifier, the encoding defined in this specification SHALL be used for the specified componentIdentifier's fields."_
+
+| REG-002
+| IWG §3.1.6 (L597): +
+_"componentClassValue OCTET STRING SIZE(4)"_ +
+TCG Reg §2.2.1 (L211-L217): +
+_"This specification encodes numbers using big-endian encoding in the 4-byte OCTET STRING componentClassValue field. For example, the value 0x12345678 would be encoded as the array 0x12 0x34 0x56 0x78."_ (End of informative comment) +
+_"When a cell from the column Component Class Value in Table 1 contains a value, that value SHALL be used, encoded as a four-byte OCTET STRING in the componentClassValue's field, by a TCG Platform Certificate issuer that identifies a component using this specification."_ +
+SMBIOS Table 1 (L281-L284): +
+_"Table 1: Translation Table (normative) -- Field: componentClassValue -- ASN.1 Encoding: OCTET STRING SIZE(4) -- Optional: Mandatory"_ +
+PCIe Table 1 (L287-L292): +
+_"Table 1: Component Identity Information (normative) -- componentClassValue OCTET STRING SIZE(4) 0x00 \| Val(Class Code Register)"_ +
+Storage Table 1/2/3 (L488-L490, L536-L538, L610-L612): +
+_"componentClassValue OCTET STRING SIZE(4)"_ (ATA: `0x00 \| 0x00 \| 0x00 \| ATA_FormFactor()`, SCSI: `0x01 \| 0x00 \| 0x00 \| SPC_INQUIRY_Class()`, NVMe: `0x02 \| PCIe_CC()`)
+
+| REG-003
+| TCG Reg §2.1.1 (L194-L196): +
+_"The OBJECT IDENTIFIER tcg-registry-componentClass-tcg SHALL be used in the componentClassRegistry field of a ComponentIdentifier SEQUENCE that uses the registry defined by this specification."_ +
+TCG Reg §3 (L233-L234): +
+_"This registry SHALL be the source of the componentClassValue field for each componentIdentifier structure in a TCG Platform Certificate whose componentClassRegistry field is the OBJECT IDENTIFIER tcg-registry-componentClass-tcg."_
+
+| REG-004
+| SMBIOS §3 Table 1 (L274-L284): +
+_"Table 1: Translation Table (normative)"_ (defines componentClassValue, componentManufacturer, componentModel, componentSerial, componentRevision, fieldReplaceable per SMBIOS type) +
+PCIe §3 Table 1 (L287-L299): +
+_"Table 1: Component Identity Information (normative)"_ +
+_"If the Class Code Register value indicates a Network Controller as defined in [6], the componentAddresses, if included in the componentIdentifier, MUST be given a ComponentAddress entry... The addressValue SHALL use the uppercase hexadecimal representation of the MAC address, without delimiters."_ +
+Storage §3/4/5 Table 1/2/3 (L486-L487, L534-L535, L608-L609): +
+_"The componentIdentifier structure SHALL be populated with values obtained from the methods specified in Table 1's Content column for an ATA-compliant component."_ / _"...Table 2's Content column for a SCSI-compliant component."_ / _"...Table 3's Content column for an NVMe-compliant component."_ +
+Errata Clarification 4 (L109-L122): +
+_"Verifiers need to support multiple MAC address formats in order to parse the addressValue field of the ComponentAddress sequence. The most common MAC address formats include: 1. Dash separated hexadecimal octets, ex: 00-A0-C9-14-C8-29, 2. Colon separated hexadecimal octets, ex: 00:A0:C9:14:C8:29, 3. Space separated hexadecimal octets, ex: 00 A0 C9 14 C8 29, 4. Non-separated hexadecimal octets, ex: 00A0C914C829, 5. Dash separated octet pairs, ex: 00A0-C914-C829, 6. Period separated octet pairs, ex: 00A0.C914.C829."_
+|===
+
+=== A.7 EXT (EXT-001 -- EXT-005)
+
+[cols="1,5a"]
+|===
+| ID | Source Text
+
+| EXT-001
+| IWG §3.2.7 (L716-L722): +
+_"This extension indicates policy terms under which the certificate was issued. Assign 'critical' the value FALSE. Assign policyIdentifier at least one object identifier. Assign the cPSuri policy qualifier the value of an HTTP URL at which a plain language version of the platform endorsement entity's certificate policy could be obtained. Assign the explicit text userNotice policy qualifier the value 'TCG Trusted Platform Endorsement'. During certificate path validation, check that at least one acceptable policyIdentifier value is present."_ +
+IWG §3.3.7 (L827-L833): +
+_"This extension indicates policy terms under which the certificate was issued. Assign 'critical' the value FALSE. Assign policyIdentifier at least one object identifier. Assign the cPSuri policy qualifier the value of an HTTP URL at which a plain language version of the platform endorsement entity's certificate policy could be obtained. Assign the explicit text userNotice policy qualifier the value 'TCG Trusted Platform Endorsement'. During certificate path validation, check that at least one acceptable policyIdentifier value is present."_
+
+| EXT-002
+| IWG §3.2.8 (L723-L730): +
+_"This extension contains the alternative name of the entity associated with this certificate. Assign 'critical' the value FALSE. Include the platform model, using the directory name-form with RDNs for the platform manufacturer, model, version number, and optionally, the serial number, and manufacturer ID."_ +
+IWG §3.3.8 (L835-L842): +
+_"This extension contains the platform name attributes. This extension MUST equal that of the base Platform or Delta Platform Certificate, the issuer MUST NOT introduce any changes. Assign 'critical' the value FALSE."_ +
+Errata Clarification 7 (L149-L152): +
+_"In section 3.2.8, the specification is silent on the ordering of the RDN sequence's attribute. There is no order required by the specification."_
+
+| EXT-003
+| IWG §3.2.7 (L720): +
+_"Assign the explicit text userNotice policy qualifier the value 'TCG Trusted Platform Endorsement'."_ +
+IWG §3.3.7 (L831): +
+_"Assign the explicit text userNotice policy qualifier the value 'TCG Trusted Platform Endorsement'."_ +
+Errata Clarification 5/6 (L123-L148): +
+_"The reader should interpret section 3.2.7 as defining the userNotice field to contain the string defined in the Certificate Type Label section."_ +
+Errata 7 (L230-L237): +
+_"For Delta Platform Certificates, the value of this field MUST be the string, 'TCG Trusted Platform Endorsement'."_
+
+| EXT-004
+| IWG §3.2.14 (L788-L790): +
+_"These fields uniquely identify certificates which share names with other certificates issued by the same issuer. These fields MUST be omitted."_ +
+IWG §3.3.14 (L875-L877): +
+_"These fields uniquely identify certificates which share names with other certificates issued by the same issuer. These fields MUST be omitted."_
+
+| EXT-005
+| IWG §3.2.9 (L734): +
+_"This extension is OPTIONAL, but if included, assign 'critical' the value of TRUE."_ +
+IWG §3.3.9 (L844-L845): +
+_"This extension contains references to additional EK certificates issued by the Delta Platform Certificate issuer. Refer to section 3.2.9 for details on how to implement this extension."_
+|===
+
+=== A.8 SEC (SEC-001 -- SEC-005)
+
+[cols="1,5a"]
+|===
+| ID | Source Text
+
+| SEC-001
+| IWG §3.1.1 (L333-L334): +
+_"The tBBSecurityAssertions attribute MUST NOT be included in the Delta Platform Certificate."_
+
+| SEC-002
+| IWG §3.1.3 (L481-L482): +
+_"This attribute MUST NOT be included in the Delta Platform Certificate."_
+
+| SEC-003
+| IWG §3.1.1 (L365-L371): +
+_"MeasurementRootType ::= ENUMERATED { static (0), dynamic (1), nonHost (2), hybrid (3), physical (4), virtual (5) }"_
+
+| SEC-004
+| IWG §3.1.1 (L328-L330): +
+_"In the CommonCriteriaMeasures, the profile and target for the evaluation can be described by either an OID, a URI to a document describing the value, or both. If both are present, they MUST represent consistent values."_
+
+| SEC-005
+| IWG §3.1.1 (L402-L407): +
+_"The hashAlgorithm and hashValue MUST both exist in each reference if either appear at all. +
+URIReference ::= SEQUENCE { +
+{nbsp}{nbsp}uniformResourceIdentifier IA5String (SIZE (1..URIMAX)), +
+{nbsp}{nbsp}hashAlgorithm AlgorithmIdentifier OPTIONAL, +
+{nbsp}{nbsp}hashValue BIT STRING OPTIONAL }"_
+|===
+
+=== A.9 ERR (ERR-001 -- ERR-005)
+
+[cols="1,5a"]
+|===
+| ID | Source Text
+
+| ERR-001
+| Errata 1 (L159-L168): +
+_"Immediately after the sentence 'The status field contained within the componentIdentifier field MUST be used only in Delta Platform Certificates', add the following statement: 'This specification does not dictate the order in which a ComponentIdentifier entry may appear within the componentIdentifiers sequence. The order in which a ComponentIdentifier entry appears in the certificate may differ from platform information sources such as SMBIOS tables or DMIdecode.'"_
+
+| ERR-002
+| Errata Clarification 4 (L106-L123): +
+_"Verifiers need to support multiple MAC address formats in order to parse the addressValue field of the ComponentAddress sequence. The most common MAC address formats include: +
+1. Dash separated hexadecimal octets, ex: 00-A0-C9-14-C8-29 +
+2. Colon separated hexadecimal octets, ex: 00:A0:C9:14:C8:29 +
+3. Space separated hexadecimal octets, ex: 00 A0 C9 14 C8 29 +
+4. Non-separated hexadecimal octets, ex: 00A0C914C829 +
+5. Dash separated octet pairs, ex: 00A0-C914-C829 +
+6. Period separated octet pairs, ex: 00A0.C914.C829"_
+
+| ERR-003
+| Errata 9 (L291-L305): +
+_"Section 3.1.2 incorrectly defines the type PrivateEnterpriseNumber. The manufacturerIdentifier value, of type PrivateEnterpriseNumber, equals one of the IANA private enterprise numbers assigned to the manufacturer of the platform."_ +
+_"Current: 'PrivateEnterpriseNumber OBJECT IDENTIFIER :: = { enterprise private-enterprise-number }' +
+Change to: 'PrivateEnterpriseNumber ::= OBJECT IDENTIFIER'"_
+
+| ERR-004
+| Errata Clarification 1 (L92-L94): +
+_"In order to encode the TPM EK Certificate information in the Platform Certificate's Holder field, the issuer must use the baseCertificateID option as defined in RFC5755. The TPM EK certificate's Issuer and Serial number must be included in the baseCertificateID."_ +
+Errata 4 (L191-L206): +
+_"The issuer MUST include attributeCertificateIdentifier or genericCertIdentifier to provide a reference to the component's Platform Certificate."_
+
+| ERR-005
+| Errata 6 (L225-L229): +
+_"The OIDs tcg-address-ethernetmac, tcg-address-wlanmac, and tcg-address-bluetoothmac listed in this section only support 48-bit MAC addresses. Future OIDs may be defined to support 64-bit MAC addresses."_
+|===
