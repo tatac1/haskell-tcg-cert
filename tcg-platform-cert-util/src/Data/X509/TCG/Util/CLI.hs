@@ -48,7 +48,8 @@ module Data.X509.TCG.Util.CLI
   )
 where
 
-import Control.Monad (forM_, when)
+import Control.Monad (forM_, unless, when)
+import Control.Exception (finally)
 import Data.Aeson (Value(..), encode, object, (.=))
 import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
@@ -74,7 +75,11 @@ import Data.X509.TCG.Util.Paccor
 import qualified Data.X509.TCG.Util.HardwareCollector as HC
 import qualified Data.Yaml as Yaml
 import System.Console.GetOpt
+import System.Directory (doesFileExist, removeFile)
+import System.Environment (lookupEnv)
 import System.Exit
+import System.FilePath (takeDirectory, (</>))
+import System.Process (readProcessWithExitCode)
 
 -- | Command line options
 data TCGOpts
@@ -109,6 +114,15 @@ data TCGOpts
   | JsonOutput
   | ChainMode
   | Detect
+  | UsePaccorSigner
+  | PaccorExtensionsFile String
+  | PaccorPolicyFile String
+  | PaccorSignerPath String
+  | PaccorValidatorPath String
+  | PaccorCertSerial String
+  | PaccorNotBefore String
+  | PaccorNotAfter String
+  | PaccorHolderFile String
   deriving (Show, Eq)
 
 -- | Generate a new platform certificate
@@ -120,6 +134,11 @@ doGenerate opts _ = do
 
   let jsonMode' = JsonOutput `elem` opts
   when (not jsonMode') $ putStrLn "Generating platform certificate..."
+
+  -- paccor signer path: use paccor config files directly (ComponentList/Extensions/PolicyReference)
+  when (UsePaccorSigner `elem` opts) $ do
+    doGenerateWithPaccorSigner opts
+    exitSuccess
 
   -- Check for config file option first
   let configFile = extractOpt "config" (\case ConfigFile f -> Just f; _ -> Nothing) opts ""
@@ -596,6 +615,123 @@ doComponents opts files = do
         Right cert -> do
           showComponentInformation cert verbose
 
+-- | Generate a platform certificate using paccor signer directly.
+-- This mode consumes paccor JSON files (ComponentList + Extensions + PolicyReference)
+-- and delegates certificate construction/signing to paccor for compatibility.
+doGenerateWithPaccorSigner :: [TCGOpts] -> IO ()
+doGenerateWithPaccorSigner opts = do
+  let configFile = extractOpt "config" (\case ConfigFile f -> Just f; _ -> Nothing) opts ""
+      outputFile = extractOpt "output" (\case Output o -> Just o; _ -> Nothing) opts "platform-cert.pem"
+      caKeyFile = extractOpt "ca-key" (\case CAPrivateKey k -> Just k; _ -> Nothing) opts ""
+      caCertFile = extractOpt "ca-cert" (\case CACertificate c -> Just c; _ -> Nothing) opts ""
+      ekCertFile = extractOpt "ek-cert" (\case TPMEKCertificate e -> Just e; _ -> Nothing) opts ""
+      holderFileOpt = extractOpt "paccor-holder" (\case PaccorHolderFile f -> Just f; _ -> Nothing) opts ""
+      extFileOpt = extractOpt "paccor-extensions" (\case PaccorExtensionsFile f -> Just f; _ -> Nothing) opts ""
+      policyFileOpt = extractOpt "paccor-policy" (\case PaccorPolicyFile f -> Just f; _ -> Nothing) opts ""
+      signerPathOpt = extractOpt "paccor-signer" (\case PaccorSignerPath f -> Just f; _ -> Nothing) opts ""
+      validatorPathOpt = extractOpt "paccor-validator" (\case PaccorValidatorPath f -> Just f; _ -> Nothing) opts ""
+      certSerial = extractOpt "paccor-cert-serial" (\case PaccorCertSerial s -> Just s; _ -> Nothing) opts "1"
+      notBefore = extractOpt "paccor-not-before" (\case PaccorNotBefore s -> Just s; _ -> Nothing) opts "20180101"
+      notAfter = extractOpt "paccor-not-after" (\case PaccorNotAfter s -> Just s; _ -> Nothing) opts "20680101"
+
+  when (null configFile) $ do
+    putStrLn "Error: --config is required with --use-paccor-signer"
+    exitFailure
+  when (null caKeyFile || null caCertFile) $ do
+    putStrLn "Error: --ca-key and --ca-cert are required with --use-paccor-signer"
+    exitFailure
+
+  let configDir = takeDirectory configFile
+      extFile = if null extFileOpt then configDir </> "Extensions.json" else extFileOpt
+      policyFile = if null policyFileOpt then configDir </> "PolicyReference.json" else policyFileOpt
+      holderFile = if null holderFileOpt then ekCertFile else holderFileOpt
+
+  when (null holderFile) $ do
+    putStrLn "Error: --ek-cert or --paccor-holder is required with --use-paccor-signer"
+    exitFailure
+
+  signerEnv <- lookupEnv "PACCOR_SIGNER_PATH"
+  validatorEnv <- lookupEnv "PACCOR_VALIDATOR_PATH"
+  let signerPath = if null signerPathOpt then fromMaybe "/opt/paccor/bin/signer" signerEnv else signerPathOpt
+      validatorPath = if null validatorPathOpt then fromMaybe "/opt/paccor/bin/validator" validatorEnv else validatorPathOpt
+
+  ensureFile "config file" configFile
+  ensureFile "extensions file" extFile
+  ensureFile "policy file" policyFile
+  ensureFile "CA private key file" caKeyFile
+  ensureFile "CA certificate file" caCertFile
+  ensureFile "holder file" holderFile
+  ensureFile "paccor signer binary" signerPath
+
+  let caCertClean = outputFile ++ ".tmp-paccor-ca.pem"
+      holderClean = outputFile ++ ".tmp-paccor-holder.pem"
+      cleanup = do
+        safeRemove caCertClean
+        safeRemove holderClean
+
+  normalizeFirstPemBlock caCertFile caCertClean
+  normalizeFirstPemBlock holderFile holderClean
+
+  finally
+    (do
+      putStrLn $ "Using paccor signer: " ++ signerPath
+      runExternalChecked "paccor signer" signerPath
+        [ "-x", extFile
+        , "-c", configFile
+        , "-e", holderClean
+        , "-p", policyFile
+        , "-k", caKeyFile
+        , "-P", caCertClean
+        , "-N", certSerial
+        , "-b", notBefore
+        , "-a", notAfter
+        , "--pem"
+        , "-f", outputFile
+        ]
+      validatorExists <- doesFileExist validatorPath
+      if validatorExists
+        then do
+          putStrLn $ "Validating with paccor validator: " ++ validatorPath
+          runExternalChecked "paccor validator" validatorPath
+            [ "-P", caCertClean
+            , "-X", outputFile
+            ]
+        else do
+          putStrLn $ "Skipping validator (not found): " ++ validatorPath
+      putStrLn $ "Certificate written to: " ++ outputFile
+    )
+    cleanup
+  where
+    ensureFile :: String -> FilePath -> IO ()
+    ensureFile label path = do
+      ok <- doesFileExist path
+      unless ok $ do
+        putStrLn $ "Error: " ++ label ++ " not found: " ++ path
+        exitFailure
+
+    safeRemove :: FilePath -> IO ()
+    safeRemove path = do
+      ok <- doesFileExist path
+      when ok (removeFile path)
+
+    normalizeFirstPemBlock :: FilePath -> FilePath -> IO ()
+    normalizeFirstPemBlock src dst = do
+      content <- B.readFile src
+      case pemParseBS content of
+        Right (pem:_) -> B.writeFile dst (pemWriteBS pem)
+        _ -> B.writeFile dst content
+
+    runExternalChecked :: String -> FilePath -> [String] -> IO ()
+    runExternalChecked label cmd args = do
+      (ec, out, err) <- readProcessWithExitCode cmd args ""
+      unless (null out) (putStrLn out)
+      unless (null err) (putStrLn err)
+      case ec of
+        ExitSuccess -> return ()
+        ExitFailure code -> do
+          putStrLn $ "Error: " ++ label ++ " failed with exit code " ++ show code
+          exitFailure
+
 -- | Write PEM file
 writePEMFile :: FilePath -> [PEM] -> IO ()
 writePEMFile file pems = do
@@ -639,6 +775,15 @@ optionsGenerate =
     Option [] ["skip-compliance"] (NoArg SkipCompliance) "skip pre-issuance compliance checks",
     Option [] ["compat"] (NoArg Compat) "operational compatibility profile (default)",
     Option [] ["strict-v11"] (NoArg StrictV11Mode) "strict v1.1 profile",
+    Option [] ["use-paccor-signer"] (NoArg UsePaccorSigner) "generate via paccor signer using paccor config files",
+    Option [] ["paccor-extensions"] (ReqArg PaccorExtensionsFile "FILE") "paccor Extensions.json (default: alongside --config)",
+    Option [] ["paccor-policy"] (ReqArg PaccorPolicyFile "FILE") "paccor PolicyReference.json (default: alongside --config)",
+    Option [] ["paccor-signer"] (ReqArg PaccorSignerPath "FILE") "paccor signer binary path (or $PACCOR_SIGNER_PATH)",
+    Option [] ["paccor-validator"] (ReqArg PaccorValidatorPath "FILE") "paccor validator binary path (optional)",
+    Option [] ["paccor-cert-serial"] (ReqArg PaccorCertSerial "NUM") "certificate serial used by paccor signer (-N)",
+    Option [] ["paccor-not-before"] (ReqArg PaccorNotBefore "YYYYMMDD") "certificate notBefore for paccor signer (-b)",
+    Option [] ["paccor-not-after"] (ReqArg PaccorNotAfter "YYYYMMDD") "certificate notAfter for paccor signer (-a)",
+    Option [] ["paccor-holder"] (ReqArg PaccorHolderFile "FILE") "holder cert for paccor signer (-e), default: --ek-cert",
     Option [] ["json"] (NoArg JsonOutput) "output results in JSON format",
     Option ['h'] ["help"] (NoArg Help) "show help"
   ]

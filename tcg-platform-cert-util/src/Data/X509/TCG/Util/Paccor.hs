@@ -47,7 +47,7 @@ import Control.Applicative ((<|>))
 import Data.Aeson hiding (encodeFile)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
-import Data.Maybe (catMaybes, isJust)
+import Data.Maybe (catMaybes, isJust, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
@@ -171,9 +171,13 @@ data PaccorAttributeCertId = PaccorAttributeCertId
   } deriving (Show, Eq, Generic)
 
 instance FromJSON PaccorAttributeCertId where
-  parseJSON = withObject "PaccorAttributeCertId" $ \v -> PaccorAttributeCertId
-    <$> v .: "HASHALGORITHM"
-    <*> v .: "HASHOVERSIGNATUREVALUE"
+  parseJSON = withObject "PaccorAttributeCertId" $ \v -> do
+    alg <- v .: "HASHALGORITHM"
+    mHashOverSig <- v .:? "HASHOVERSIGNATUREVALUE"
+    hashValue <- case mHashOverSig of
+      Just hv -> return hv
+      Nothing -> v .: "HASH"
+    return (PaccorAttributeCertId alg hashValue)
 
 -- | General Name entry in issuer
 data PaccorGeneralName = PaccorGeneralName
@@ -193,9 +197,13 @@ data PaccorGenericCertId = PaccorGenericCertId
   } deriving (Show, Eq, Generic)
 
 instance FromJSON PaccorGenericCertId where
-  parseJSON = withObject "PaccorGenericCertId" $ \v -> PaccorGenericCertId
-    <$> v .: "ISSUER"
-    <*> v .: "SERIAL"
+  parseJSON = withObject "PaccorGenericCertId" $ \v -> do
+    issuerValue <- v .: "ISSUER"
+    issuer <- case issuerValue of
+      String dn -> return (parseIssuerDnString dn)
+      _ -> parseJSON issuerValue
+    serial <- v .: "SERIAL"
+    return (PaccorGenericCertId issuer serial)
 
 -- | Platform Certificate reference for component
 -- References another Platform Certificate that attests this component
@@ -294,6 +302,33 @@ instance FromJSON PaccorUri where
     <$> v .: "UNIFORMRESOURCEIDENTIFIER"
     <*> v .:? "HASHALGORITHM"
     <*> v .:? "HASHVALUE"
+
+-- | Parse DN string form used by paccor example JSON
+-- Example: "C=US, ST=CA, L=Sample City, O=Sample Corp, OU=CA, CN=www.example.com"
+parseIssuerDnString :: Text -> [PaccorGeneralName]
+parseIssuerDnString dn =
+  mapMaybe toGeneralName (splitDn dn)
+  where
+    splitDn :: Text -> [Text]
+    splitDn = map T.strip . T.splitOn ","
+
+    toGeneralName :: Text -> Maybe PaccorGeneralName
+    toGeneralName part =
+      case T.breakOn "=" part of
+        (k, vWithEq)
+          | T.null vWithEq -> Nothing
+          | otherwise ->
+              let v = T.drop 1 vWithEq
+              in fmap (\oid -> PaccorGeneralName oid (T.strip v)) (keyToOid (T.toUpper (T.strip k)))
+
+    keyToOid :: Text -> Maybe Text
+    keyToOid "C"  = Just "2.5.4.6"
+    keyToOid "ST" = Just "2.5.4.8"
+    keyToOid "L"  = Just "2.5.4.7"
+    keyToOid "O"  = Just "2.5.4.10"
+    keyToOid "OU" = Just "2.5.4.11"
+    keyToOid "CN" = Just "2.5.4.3"
+    keyToOid _    = Nothing
 
 -- | Input format detection
 data InputFormat = FormatYAML | FormatJSON
