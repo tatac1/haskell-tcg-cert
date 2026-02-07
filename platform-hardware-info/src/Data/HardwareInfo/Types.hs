@@ -32,11 +32,16 @@ module Data.HardwareInfo.Types
     -- * Helper functions
   , emptyHardwareInfo
   , emptyPlatformInfo
+    -- * Display
+  , componentClassName
   ) where
 
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Word (Word8, Word32)
 import GHC.Generics (Generic)
+import Data.Aeson (ToJSON(..), object, (.=))
+import Text.Printf (printf)
 
 -- | Complete hardware information collected from the system
 data HardwareInfo = HardwareInfo
@@ -619,3 +624,161 @@ emptyPlatformInfo = PlatformInfo
   , platformSKU = Nothing
   , platformFamily = Nothing
   }
+
+-- | Human-readable name for a ComponentClass
+componentClassName :: ComponentClass -> Text
+componentClassName cls = case cls of
+  ClassGenericComponent -> "Generic"
+  ClassGeneralProcessor -> "Processor"
+  ClassCPU              -> "CPU"
+  ClassDSP              -> "DSP"
+  ClassVideoProcessor   -> "Video Processor"
+  ClassGPU              -> "GPU"
+  ClassDPU              -> "DPU"
+  ClassEmbeddedProcessor -> "Embedded Processor"
+  ClassSoC              -> "SoC"
+  ClassGeneralContainer -> "Container"
+  ClassDesktop          -> "Desktop"
+  ClassLaptop           -> "Laptop"
+  ClassNotebook         -> "Notebook"
+  ClassAllInOne         -> "All-in-One"
+  ClassMainServerChassis -> "Server Chassis"
+  ClassSubChassis       -> "Sub Chassis"
+  ClassRAIDChassis      -> "RAID Chassis"
+  ClassRackMountChassis -> "Rack Mount Chassis"
+  ClassMultiSystemChassis -> "Multi-system Chassis"
+  ClassBlade            -> "Blade"
+  ClassBladeEnclosure   -> "Blade Enclosure"
+  ClassTablet           -> "Tablet"
+  ClassConvertible      -> "Convertible"
+  ClassIoT              -> "IoT"
+  ClassStickPC          -> "Stick PC"
+  ClassGeneralICBoard   -> "IC Board"
+  ClassDaughterBoard    -> "Daughter Board"
+  ClassBaseboard        -> "Baseboard"
+  ClassRiserCard        -> "Riser Card"
+  ClassGeneralModule    -> "Module"
+  ClassTPM              -> "TPM"
+  ClassGeneralController -> "Controller"
+  ClassVideoController  -> "Video Controller"
+  ClassSCSIController   -> "SCSI Controller"
+  ClassEthernetController -> "Ethernet Controller"
+  ClassAudioController  -> "Audio Controller"
+  ClassSATAController   -> "SATA Controller"
+  ClassSASController    -> "SAS Controller"
+  ClassRAIDController   -> "RAID Controller"
+  ClassUSBController    -> "USB Controller"
+  ClassMultiFunctionStorageController -> "Multi-function Storage"
+  ClassMultiFunctionNetworkController -> "Multi-function Network"
+  ClassSmartIOController -> "Smart IO Controller"
+  ClassBMC              -> "BMC"
+  ClassDMAController    -> "DMA Controller"
+  ClassGeneralMemory    -> "Memory"
+  ClassDRAM             -> "DRAM"
+  ClassFlashMemory      -> "Flash"
+  ClassSDRAM            -> "SDRAM"
+  ClassNVRAM            -> "NVRAM"
+  Class3DXPoint         -> "3D XPoint"
+  ClassDDR5             -> "DDR5"
+  ClassLPDDR5           -> "LPDDR5"
+  ClassGeneralStorage   -> "Storage"
+  ClassStorageDrive     -> "Storage Drive"
+  ClassSSD              -> "SSD"
+  ClassM2Drive          -> "M.2 Drive"
+  ClassHDD              -> "HDD"
+  ClassNVMe             -> "NVMe"
+  ClassGeneralMediaDrive -> "Media Drive"
+  ClassTapeDrive        -> "Tape Drive"
+  ClassDVDDrive         -> "DVD Drive"
+  ClassBluRayDrive      -> "Blu-Ray Drive"
+  ClassGeneralNetworkAdapter -> "Network Adapter"
+  ClassEthernetAdapter  -> "Ethernet"
+  ClassWiFiAdapter      -> "WiFi"
+  ClassBluetoothAdapter -> "Bluetooth"
+  ClassZigBeeAdapter    -> "ZigBee"
+  Class3GCellular       -> "3G Cellular"
+  Class4GCellular       -> "4G Cellular"
+  Class5GCellular       -> "5G Cellular"
+  ClassNetworkSwitch    -> "Network Switch"
+  ClassNetworkRouter    -> "Network Router"
+  ClassGeneralEnergyObject -> "Energy Object"
+  ClassPowerSupply      -> "Power Supply"
+  ClassBattery          -> "Battery"
+  ClassGeneralCooling   -> "Cooling"
+  ClassChassisFan       -> "Chassis Fan"
+  ClassSocketFan        -> "Socket Fan"
+  ClassGeneralInput     -> "Input Device"
+  ClassGeneralFirmware  -> "Firmware"
+  ClassSystemFirmware   -> "System Firmware"
+  ClassDriveFirmware    -> "Drive Firmware"
+  ClassBootloader       -> "Bootloader"
+  ClassSMM              -> "SMM"
+  ClassNICFirmware      -> "NIC Firmware"
+  ClassOther name _     -> name
+  ClassChassis          -> "Chassis"
+  ClassRAM              -> "RAM"
+  ClassNIC              -> "NIC"
+  ClassBIOS             -> "BIOS"
+
+instance ToJSON HardwareInfo where
+  toJSON hw = object
+    [ "platform" .= hwPlatform hw
+    , "components" .= hwComponents hw
+    , "smbiosVersion" .= hwSmbiosVersion hw
+    ]
+
+instance ToJSON PlatformInfo where
+  toJSON p = object
+    [ "manufacturer" .= platformManufacturer p
+    , "model" .= platformModel p
+    , "version" .= platformVersion p
+    , "serial" .= platformSerial p
+    , "uuid" .= platformUUID p
+    , "sku" .= platformSKU p
+    , "family" .= platformFamily p
+    ]
+
+instance ToJSON Component where
+  toJSON c = object
+    [ "class" .= componentClass c
+    , "manufacturer" .= componentManufacturer c
+    , "model" .= componentModel c
+    , "serial" .= componentSerial c
+    , "revision" .= componentRevision c
+    , "fieldReplaceable" .= componentFieldReplaceable c
+    , "addresses" .= componentAddresses c
+    ]
+
+instance ToJSON ComponentClass where
+  toJSON cls = object
+    [ "registry" .= tcgComponentClassRegistry
+    , "value" .= T.pack (printf "%08X" (componentClassToTcgValue cls))
+    , "name" .= componentClassName cls
+    ]
+
+instance ToJSON ComponentAddress where
+  toJSON addr = case addr of
+    EthernetMAC mac   -> object ["type" .= ("ethernetMAC" :: Text), "address" .= mac]
+    WirelessMAC mac   -> object ["type" .= ("wirelessMAC" :: Text), "address" .= mac]
+    BluetoothMAC mac  -> object ["type" .= ("bluetoothMAC" :: Text), "address" .= mac]
+    PCIAddress pci    -> object ["type" .= ("pci" :: Text), "address" .= pci]
+    USBAddress usb    -> object ["type" .= ("usb" :: Text), "address" .= usb]
+    SATAAddress sata  -> object ["type" .= ("sata" :: Text), "address" .= sata]
+    WWNAddress wwn    -> object ["type" .= ("wwn" :: Text), "address" .= wwn]
+    NVMeAddress nvme  -> object ["type" .= ("nvme" :: Text), "address" .= nvme]
+    LogicalAddress la -> object ["type" .= ("logical" :: Text), "address" .= la]
+
+instance ToJSON SmbiosVersion where
+  toJSON v = object
+    [ "major" .= smbiosMajor v
+    , "minor" .= smbiosMinor v
+    , "revision" .= smbiosRevision v
+    ]
+
+instance ToJSON HardwareError where
+  toJSON err = case err of
+    SmbiosNotAvailable msg  -> object ["error" .= ("smbiosNotAvailable" :: Text), "message" .= msg]
+    PermissionDenied msg    -> object ["error" .= ("permissionDenied" :: Text), "message" .= msg]
+    ParseError msg          -> object ["error" .= ("parseError" :: Text), "message" .= msg]
+    UnsupportedPlatform msg -> object ["error" .= ("unsupportedPlatform" :: Text), "message" .= msg]
+    IOError msg             -> object ["error" .= ("ioError" :: Text), "message" .= msg]
