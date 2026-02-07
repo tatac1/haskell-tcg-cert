@@ -47,15 +47,28 @@ import qualified Crypto.Hash as Hash
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Crypto.PubKey.RSA.PKCS15 as RSA
 import Data.ASN1.Types (ASN1 (..), OID)
+import Data.ASN1.Types.String (ASN1CharacterString(..), ASN1StringEncoding(..))
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 import Control.Monad (when)
+import Control.Applicative ((<|>))
 import Data.X509 (AltName (..), DistinguishedName (..), Extensions (..), HashALG (..), PubKeyALG (..), SignatureALG (..), objectToSignedExact, objectToSignedExactF)
 import Data.X509.AttCert (AttCertIssuer (..), AttCertValidityPeriod, Holder (..))
 import Data.X509.Attribute (Attribute (..), Attributes (..))
 import Data.X509.TCG.Component
 import Data.X509.TCG.Delta
-import Data.X509.TCG.OID (tcg_at_componentIdentifier_v2, tcg_at_platformConfiguration_v2, tcg_at_platformManufacturer, tcg_at_platformModel, tcg_at_platformSerial, tcg_at_platformVersion)
+import Data.X509.TCG.OID
+  ( tcg_at_componentIdentifier_v2
+  , tcg_at_platformConfiguration_v2
+  , tcg_at_platformManufacturer
+  , tcg_at_platformModel
+  , tcg_at_platformSerial
+  , tcg_at_platformVersion
+  , tcg_paa_platformManufacturer
+  , tcg_paa_platformModel
+  , tcg_paa_platformSerial
+  , tcg_paa_platformVersion
+  )
 import Data.X509.TCG.Platform
 import Data.X509AC (IssuerSerial (..), V2Form (..))
 
@@ -167,10 +180,10 @@ createSignedPlatformCertificate holder certIssuer validity config additionalAttr
 buildPlatformAttributes :: PlatformConfiguration -> Attributes -> Either String Attributes
 buildPlatformAttributes config (Attributes additionalAttrs) = do
   -- Create basic platform attributes from configuration
-  let manufacturerAttr = Attribute tcg_at_platformManufacturer [[OctetString (pcManufacturer config)]]
-      modelAttr = Attribute tcg_at_platformModel [[OctetString (pcModel config)]]
-      serialAttr = Attribute tcg_at_platformSerial [[OctetString (pcSerial config)]]
-      versionAttr = Attribute tcg_at_platformVersion [[OctetString (pcVersion config)]]
+  let manufacturerAttr = Attribute tcg_paa_platformManufacturer [[ASN1String (ASN1CharacterString UTF8 (pcManufacturer config))]]
+      modelAttr = Attribute tcg_paa_platformModel [[ASN1String (ASN1CharacterString UTF8 (pcModel config))]]
+      serialAttr = Attribute tcg_paa_platformSerial [[ASN1String (ASN1CharacterString UTF8 (pcSerial config))]]
+      versionAttr = Attribute tcg_paa_platformVersion [[ASN1String (ASN1CharacterString UTF8 (pcVersion config))]]
 
   -- Combine platform attributes with additional attributes
   let allAttributes = [manufacturerAttr, modelAttr, serialAttr, versionAttr] ++ additionalAttrs
@@ -323,10 +336,14 @@ doSignRSA hashAlg privKey msg = do
 extractFromIndividualAttributes :: SignedPlatformCertificate -> Maybe PlatformConfigurationV2
 extractFromIndividualAttributes cert = do
   let attrs = pciAttributes $ getPlatformCertificate cert
-  manufacturer <- lookupAttributeValue tcg_at_platformManufacturer attrs
-  model <- lookupAttributeValue tcg_at_platformModel attrs
-  platformSerial <- lookupAttributeValue tcg_at_platformSerial attrs
-  version <- lookupAttributeValue tcg_at_platformVersion attrs
+  manufacturer <- lookupAttributeValue tcg_paa_platformManufacturer attrs
+    <|> lookupAttributeValue tcg_at_platformManufacturer attrs
+  model <- lookupAttributeValue tcg_paa_platformModel attrs
+    <|> lookupAttributeValue tcg_at_platformModel attrs
+  platformSerial <- lookupAttributeValue tcg_paa_platformSerial attrs
+    <|> lookupAttributeValue tcg_at_platformSerial attrs
+  version <- lookupAttributeValue tcg_paa_platformVersion attrs
+    <|> lookupAttributeValue tcg_at_platformVersion attrs
   return $
     PlatformConfigurationV2
       { pcv2Manufacturer = manufacturer,
@@ -341,6 +358,7 @@ extractFromIndividualAttributes cert = do
     lookupAttributeValue targetOID (Attributes attrList) =
       case [attrVal | Attribute attrOID attrVals <- attrList, attrOID == targetOID, [attrVal] <- attrVals] of
         (OctetString bs : _) -> Just bs
+        (ASN1String (ASN1CharacterString _ bs) : _) -> Just bs
         _ -> Nothing
 
 -- | Extract the current platform configuration from a certificate

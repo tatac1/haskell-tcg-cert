@@ -24,7 +24,7 @@ tests = testGroup "TCG Attributes Tests"
     [ testCase "isRequiredAttribute checks" $ do
         isRequiredAttribute tcg_at_platformConfiguration_v2 @?= True
         isRequiredAttribute tcg_at_componentIdentifier_v2 @?= True
-        isRequiredAttribute tcg_at_platformManufacturer @?= False
+        isRequiredAttribute tcg_paa_platformManufacturer @?= False
     ]
   , testGroup "Critical Attributes"
     [ testCase "isCriticalAttribute checks" $ do

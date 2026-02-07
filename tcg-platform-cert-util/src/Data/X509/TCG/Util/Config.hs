@@ -612,5 +612,5 @@ configToExtendedAttrs config =
     groupsOf n xs = take n xs : groupsOf n (drop n xs)
 
     buildVersion :: Maybe Int -> Maybe Int -> Maybe Int -> Maybe (Int, Int, Int)
-    buildVersion (Just maj) (Just min) (Just rev) = Just (maj, min, rev)
+    buildVersion (Just maj) (Just minor) (Just rev) = Just (maj, minor, rev)
     buildVersion _ _ _ = Nothing

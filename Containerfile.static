@@ -21,16 +21,19 @@ COPY cabal.project .
 COPY cabal.project.static .
 COPY platform-hardware-info/platform-hardware-info.cabal platform-hardware-info/
 COPY tcg-platform-cert/tcg-platform-cert.cabal tcg-platform-cert/
+COPY tcg-platform-cert-compliance/tcg-platform-cert-compliance.cabal tcg-platform-cert-compliance/
 COPY tcg-platform-cert-validation/tcg-platform-cert-validation.cabal tcg-platform-cert-validation/
 COPY tcg-platform-cert-util/tcg-platform-cert-util.cabal tcg-platform-cert-util/
 
 # Create dummy source files for dependency resolution
 RUN mkdir -p platform-hardware-info/src && \
     mkdir -p tcg-platform-cert/Data && \
+    mkdir -p tcg-platform-cert-compliance/src && \
     mkdir -p tcg-platform-cert-validation/src && \
     mkdir -p tcg-platform-cert-util/src && \
     echo "module Lib where" > platform-hardware-info/src/Lib.hs && \
     echo "module Lib where" > tcg-platform-cert/Data/Lib.hs && \
+    echo "module Lib where" > tcg-platform-cert-compliance/src/Lib.hs && \
     echo "module Lib where" > tcg-platform-cert-validation/src/Lib.hs && \
     echo "module Main where; main = pure ()" > tcg-platform-cert-util/src/Main.hs
 
@@ -40,6 +43,7 @@ RUN cabal build --project-file=cabal.project.static --only-dependencies all || t
 # Copy actual source files
 COPY platform-hardware-info/ platform-hardware-info/
 COPY tcg-platform-cert/ tcg-platform-cert/
+COPY tcg-platform-cert-compliance/ tcg-platform-cert-compliance/
 COPY tcg-platform-cert-validation/ tcg-platform-cert-validation/
 COPY tcg-platform-cert-util/ tcg-platform-cert-util/
 

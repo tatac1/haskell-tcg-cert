@@ -1,6 +1,7 @@
 packages:
   platform-hardware-info
   tcg-platform-cert
+  tcg-platform-cert-compliance
   tcg-platform-cert-validation
   tcg-platform-cert-util
 

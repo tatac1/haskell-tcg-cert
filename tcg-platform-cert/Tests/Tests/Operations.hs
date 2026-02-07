@@ -5,7 +5,7 @@ module Tests.Operations (tests) where
 import Data.ASN1.Types (ASN1 (..))
 -- Cryptographic imports for testing
 
-import Data.ASN1.Types.String (ASN1StringEncoding (..), asn1CharacterString)
+import Data.ASN1.Types.String (ASN1CharacterString(..), ASN1StringEncoding (..), asn1CharacterString)
 import qualified Data.ByteString.Char8 as B
 import Control.Monad (when)
 import Data.Maybe (isNothing)
@@ -16,7 +16,7 @@ import Data.X509.Attribute (Attributes (..))
 import qualified Data.X509.TCG as TCG
 import Data.X509.TCG.Component
 import Data.X509.TCG.Delta
-import Data.X509.TCG.OID (tcg_at_platformManufacturer, tcg_at_platformModel)
+import Data.X509.TCG.OID (tcg_paa_platformManufacturer, tcg_paa_platformModel)
 import Data.X509.TCG.Operations
 import Data.X509.TCG.Platform
 import Data.X509.TCG.Utils (lookupAttributeByOID)
@@ -530,16 +530,18 @@ tests =
                 let attrs = pciAttributes $ getPlatformCertificate cert
 
                 -- Check that manufacturer attribute is present
-                case lookupAttributeByOID tcg_at_platformManufacturer attrs of
+                case lookupAttributeByOID tcg_paa_platformManufacturer attrs of
                   Nothing -> assertFailure "Platform manufacturer attribute not found"
                   Just values -> case values of
+                    [ASN1String (ASN1CharacterString _ mfg)] -> mfg @?= B.pack "ACME Corp"
                     [OctetString mfg] -> mfg @?= B.pack "ACME Corp"
                     _ -> assertFailure "Invalid manufacturer attribute format"
 
                 -- Check that model attribute is present
-                case lookupAttributeByOID tcg_at_platformModel attrs of
+                case lookupAttributeByOID tcg_paa_platformModel attrs of
                   Nothing -> assertFailure "Platform model attribute not found"
                   Just values -> case values of
+                    [ASN1String (ASN1CharacterString _ model)] -> model @?= B.pack "Platform X"
                     [OctetString model] -> model @?= B.pack "Platform X"
                     _ -> assertFailure "Invalid model attribute format"
         ],

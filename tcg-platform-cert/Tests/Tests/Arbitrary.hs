@@ -66,7 +66,7 @@ instance Arbitrary TPMInfo where
     <*> arbitrary          -- specification
 
 instance Arbitrary ComponentStatus where
-  arbitrary = elements [ComponentAdded, ComponentRemoved, ComponentModified, ComponentUnchanged]
+  arbitrary = elements [ComponentAdded, ComponentModified, ComponentRemoved]
 
 instance Arbitrary PlatformConfiguration where
   arbitrary = PlatformConfiguration

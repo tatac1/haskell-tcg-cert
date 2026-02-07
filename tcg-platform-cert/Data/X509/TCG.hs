@@ -620,10 +620,10 @@ buildAttributesFromConfigExt ::
   Either String Attributes
 buildAttributesFromConfigExt config components _tpmInfo extAttrs = do
   -- Create basic platform attributes
-  let manufacturerAttr = Attribute tcg_at_platformManufacturer [[OctetString (pcManufacturer config)]]
-      modelAttr = Attribute tcg_at_platformModel [[OctetString (pcModel config)]]
-      serialAttr = Attribute tcg_at_platformSerial [[OctetString (pcSerial config)]]
-      versionAttr = Attribute tcg_at_platformVersion [[OctetString (pcVersion config)]]
+  let manufacturerAttr = Attribute tcg_paa_platformManufacturer [[ASN1String (ASN1CharacterString UTF8 (pcManufacturer config))]]
+      modelAttr = Attribute tcg_paa_platformModel [[ASN1String (ASN1CharacterString UTF8 (pcModel config))]]
+      serialAttr = Attribute tcg_paa_platformSerial [[ASN1String (ASN1CharacterString UTF8 (pcSerial config))]]
+      versionAttr = Attribute tcg_paa_platformVersion [[ASN1String (ASN1CharacterString UTF8 (pcVersion config))]]
 
       -- Create component attributes
       -- If etaComponentsV2 is provided, use platformConfiguration-v2 format (via buildExtendedTCGAttrs)
@@ -1153,10 +1153,10 @@ getRequiredAttributes :: [OID]
 getRequiredAttributes =
   [ tcg_at_platformConfiguration_v2,
     tcg_at_componentIdentifier_v2,
-    tcg_at_platformManufacturer,
-    tcg_at_platformModel,
-    tcg_at_platformSerial,
-    tcg_at_platformVersion
+    tcg_paa_platformManufacturer,
+    tcg_paa_platformModel,
+    tcg_paa_platformSerial,
+    tcg_paa_platformVersion
   ]
 
 -- | Validate that a certificate contains all required attributes

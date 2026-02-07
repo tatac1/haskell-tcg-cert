@@ -1,0 +1,94 @@
+cabal-version:      3.0
+name:               tcg-platform-cert-compliance
+version:            0.1.0.0
+synopsis:           IWG Platform Certificate Profile v1.1 Compliance Testing
+description:
+    Compliance testing framework for TCG Platform Certificates
+    per IWG Platform Certificate Profile Specification v1.1.
+    Provides 66 compliance checks with specification traceability
+    and SBV-based formal verification.
+
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Toru Tomita
+maintainer:         toru.tomita@gmail.com
+copyright:          (c) 2026 Toru Tomita
+category:           Cryptography, Security
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+    exposed-modules:
+        Data.X509.TCG.Compliance
+        Data.X509.TCG.Compliance.Types
+        Data.X509.TCG.Compliance.Reference
+        Data.X509.TCG.Compliance.Result
+        Data.X509.TCG.Compliance.Check
+        Data.X509.TCG.Compliance.Structural
+        Data.X509.TCG.Compliance.Value
+        Data.X509.TCG.Compliance.Delta
+        Data.X509.TCG.Compliance.Extension
+        Data.X509.TCG.Compliance.Security
+        Data.X509.TCG.Compliance.Errata
+        Data.X509.TCG.Compliance.Chain
+        Data.X509.TCG.Compliance.Registry
+        Data.X509.TCG.Compliance.Suggestion
+        Data.X509.TCG.Compliance.ChainCompliance
+    other-modules:
+        Data.X509.TCG.Compliance.ASN1
+        Data.X509.TCG.Compliance.Internal
+    build-depends:
+        base >= 4.9 && < 5
+      , bytestring
+      , text
+      , containers
+      , time
+      , aeson >= 2.0
+      , tcg-platform-cert
+      , crypton-x509
+      , crypton-asn1-types
+      , crypton-asn1-encoding
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    default-extensions:
+        OverloadedStrings
+        LambdaCase
+
+test-suite test-tcg-platform-cert-compliance
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    main-is:          Tests.hs
+    other-modules:
+        ComplianceSpec
+        EndToEndSpec
+        SBVProofs
+        ComplianceGuideSpec
+        SuggestionSpec
+        ChainComplianceSpec
+    build-depends:
+        base >= 4.9 && < 5
+      , bytestring
+      , text
+      , containers
+      , time
+      , time-hourglass
+      , directory
+      , pem
+      , tasty
+      , tasty-hunit
+      , tasty-quickcheck
+      , QuickCheck
+      , sbv >= 8.0
+      , crypton-x509
+      , crypton-asn1-types
+      , crypton-asn1-encoding
+      , tcg-platform-cert-compliance
+      , tcg-platform-cert
+    hs-source-dirs:   test
+    default-language: Haskell2010
+    default-extensions:
+        OverloadedStrings

@@ -57,12 +57,16 @@ tests = testGroup "Platform Certificate Tests"
             expected = [Start Sequence, OctetString (B.pack "2.0"), IntVal 116, IntVal 1, End Sequence]
         asn1 @?= expected
     , testCase "ComponentStatus enum values match specification" $ do
-        let statuses = [ComponentAdded, ComponentRemoved, ComponentModified, ComponentUnchanged]
-            expected = [IntVal 0, IntVal 1, IntVal 2, IntVal 3]
+        let statuses = [ComponentAdded, ComponentModified, ComponentRemoved]
+            expected = [IntVal 0, IntVal 1, IntVal 2]
             actual = map (\s -> case toASN1 s [] of
               (x:_) -> x
               [] -> error "toASN1 returned empty list") statuses
         actual @?= expected
+    , testCase "ComponentStatus rejects non-standard enum value" $ do
+        case (fromASN1 [IntVal 3] :: Either String (ComponentStatus, [ASN1])) of
+          Left _ -> pure ()
+          Right _ -> assertFailure "Expected ComponentStatus to reject enum value 3"
     ]
   , testGroup "Property-based Tests"
     [ testProperty "TPMVersion ASN.1 roundtrip" $ \version ->

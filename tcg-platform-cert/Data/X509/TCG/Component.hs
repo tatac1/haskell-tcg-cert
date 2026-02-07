@@ -43,6 +43,7 @@ module Data.X509.TCG.Component
 where
 
 import Data.ASN1.Types
+import Data.ASN1.Types.String (ASN1CharacterString(..), ASN1StringEncoding(..))
 import qualified Data.ByteString as B
 
 -- | Component Identifier structure (v1)
@@ -287,26 +288,35 @@ validateComponentHierarchy hierarchy =
 
 instance ASN1Object ComponentIdentifier where
   toASN1 (ComponentIdentifier manufacturer model serial revision mfgSerial mfgRevision) xs =
-    [Start Sequence, OctetString manufacturer, OctetString model]
-      ++ maybe [] (\s -> [OctetString s]) serial
-      ++ maybe [] (\r -> [OctetString r]) revision
-      ++ maybe [] (\ms -> [OctetString ms]) mfgSerial
-      ++ maybe [] (\mr -> [OctetString mr]) mfgRevision
+    [ Start Sequence
+    , ASN1String (ASN1CharacterString UTF8 manufacturer)
+    , ASN1String (ASN1CharacterString UTF8 model)
+    ]
+      ++ maybe [] (\s -> [ASN1String (ASN1CharacterString UTF8 s)]) serial
+      ++ maybe [] (\r -> [ASN1String (ASN1CharacterString UTF8 r)]) revision
+      ++ maybe [] (\ms -> [ASN1String (ASN1CharacterString UTF8 ms)]) mfgSerial
+      ++ maybe [] (\mr -> [ASN1String (ASN1CharacterString UTF8 mr)]) mfgRevision
       ++ [End Sequence]
       ++ xs
-  fromASN1 (Start Sequence : OctetString manufacturer : OctetString model : rest) =
+  fromASN1 (Start Sequence : mfg : mdl : rest) = do
+    manufacturer <- parseComponentString "ComponentIdentifier manufacturer" mfg
+    model <- parseComponentString "ComponentIdentifier model" mdl
     parseOptionalFields rest manufacturer model Nothing Nothing Nothing Nothing
     where
       parseOptionalFields (End Sequence : remaining) mfg mdl ser rev mfgSer mfgRev =
         Right (ComponentIdentifier mfg mdl ser rev mfgSer mfgRev, remaining)
-      parseOptionalFields (OctetString value : rest') mfg mdl Nothing Nothing Nothing Nothing =
-        parseOptionalFields rest' mfg mdl (Just value) Nothing Nothing Nothing
-      parseOptionalFields (OctetString value : rest') mfg mdl (Just ser) Nothing Nothing Nothing =
-        parseOptionalFields rest' mfg mdl (Just ser) (Just value) Nothing Nothing
-      parseOptionalFields (OctetString value : rest') mfg mdl (Just ser) (Just rev) Nothing Nothing =
-        parseOptionalFields rest' mfg mdl (Just ser) (Just rev) (Just value) Nothing
-      parseOptionalFields (OctetString value : rest') mfg mdl (Just ser) (Just rev) (Just mfgSer) Nothing =
-        parseOptionalFields rest' mfg mdl (Just ser) (Just rev) (Just mfgSer) (Just value)
+      parseOptionalFields (value : rest') mfg mdl Nothing Nothing Nothing Nothing = do
+        v <- parseOptionalString value
+        parseOptionalFields rest' mfg mdl v Nothing Nothing Nothing
+      parseOptionalFields (value : rest') mfg mdl (Just ser) Nothing Nothing Nothing = do
+        v <- parseOptionalString value
+        parseOptionalFields rest' mfg mdl (Just ser) v Nothing Nothing
+      parseOptionalFields (value : rest') mfg mdl (Just ser) (Just rev) Nothing Nothing = do
+        v <- parseOptionalString value
+        parseOptionalFields rest' mfg mdl (Just ser) (Just rev) v Nothing
+      parseOptionalFields (value : rest') mfg mdl (Just ser) (Just rev) (Just mfgSer) Nothing = do
+        v <- parseOptionalString value
+        parseOptionalFields rest' mfg mdl (Just ser) (Just rev) (Just mfgSer) v
       parseOptionalFields _ _ _ _ _ _ _ = Left "ComponentIdentifier: Invalid ASN1 structure"
   fromASN1 _ = Left "ComponentIdentifier: Invalid ASN1 structure"
 
@@ -317,22 +327,10 @@ parseComponentIdentifierV2Fields ::
   [ASN1] ->
   Either String (ComponentIdentifierV2, [ASN1])
 parseComponentIdentifierV2Fields manufacturer model (serialField : revisionField : mfgSerialField : mfgRevisionField : rest) =
-  let serial = case serialField of
-        Null -> Nothing
-        OctetString s -> Just s
-        _ -> Nothing
-      revision = case revisionField of
-        Null -> Nothing
-        OctetString r -> Just r
-        _ -> Nothing
-      mfgSerial = case mfgSerialField of
-        Null -> Nothing
-        OctetString ms -> Just ms
-        _ -> Nothing
-      mfgRevision = case mfgRevisionField of
-        Null -> Nothing
-        OctetString mr -> Just mr
-        _ -> Nothing
+  let serial = parseOptionalStringValue serialField
+      revision = parseOptionalStringValue revisionField
+      mfgSerial = parseOptionalStringValue mfgSerialField
+      mfgRevision = parseOptionalStringValue mfgRevisionField
    in do
         (compClass, rest') <- fromASN1 rest
         case rest' of
@@ -349,18 +347,38 @@ parseComponentIdentifierV2Fields _ _ _ =
 
 instance ASN1Object ComponentIdentifierV2 where
   toASN1 (ComponentIdentifierV2 manufacturer model serial revision mfgSerial mfgRevision compClass compAddr) xs =
-    [Start Sequence, OctetString manufacturer, OctetString model]
-      ++ [maybe Null OctetString serial]
-      ++ [maybe Null OctetString revision]
-      ++ [maybe Null OctetString mfgSerial]
-      ++ [maybe Null OctetString mfgRevision]
+    [ Start Sequence
+    , ASN1String (ASN1CharacterString UTF8 manufacturer)
+    , ASN1String (ASN1CharacterString UTF8 model)
+    ]
+      ++ [maybe Null (ASN1String . ASN1CharacterString UTF8) serial]
+      ++ [maybe Null (ASN1String . ASN1CharacterString UTF8) revision]
+      ++ [maybe Null (ASN1String . ASN1CharacterString UTF8) mfgSerial]
+      ++ [maybe Null (ASN1String . ASN1CharacterString UTF8) mfgRevision]
       ++ toASN1 compClass []
       ++ maybe [] (`toASN1` []) compAddr
       ++ [End Sequence]
       ++ xs
-  fromASN1 (Start Sequence : OctetString manufacturer : OctetString model : xs) =
+  fromASN1 (Start Sequence : mfg : mdl : xs) = do
+    manufacturer <- parseComponentString "ComponentIdentifierV2 manufacturer" mfg
+    model <- parseComponentString "ComponentIdentifierV2 model" mdl
     parseComponentIdentifierV2Fields manufacturer model xs
-  fromASN1 _ = Left "ComponentIdentifierV2: Expected Start Sequence followed by two OctetStrings"
+  fromASN1 _ = Left "ComponentIdentifierV2: Expected Start Sequence followed by two UTF8Strings"
+
+-- | Parse a required component string (UTF8String or OctetString).
+parseComponentString :: String -> ASN1 -> Either String B.ByteString
+parseComponentString _ (OctetString bs) = Right bs
+parseComponentString _ (ASN1String (ASN1CharacterString _ bs)) = Right bs
+parseComponentString label _ = Left (label ++ ": expected UTF8String")
+
+parseOptionalStringValue :: ASN1 -> Maybe B.ByteString
+parseOptionalStringValue Null = Nothing
+parseOptionalStringValue (OctetString bs) = Just bs
+parseOptionalStringValue (ASN1String (ASN1CharacterString _ bs)) = Just bs
+parseOptionalStringValue _ = Nothing
+
+parseOptionalString :: ASN1 -> Either String (Maybe B.ByteString)
+parseOptionalString v = Right (parseOptionalStringValue v)
 
 instance ASN1Object ComponentClass where
   toASN1 ComponentMotherboard xs = IntVal 1 : xs

@@ -13,6 +13,9 @@ import qualified IntegrationTests
 import qualified CryptoAlgorithmTests
 import qualified ValidationTests
 import qualified SBVTests
+import qualified ConfigLintTests
+import qualified PreIssuanceTests
+import qualified JsonReportTests
 
 main :: IO ()
 main = defaultMain tests
@@ -27,6 +30,9 @@ tests = testGroup "TCG Platform Certificate Utility Tests"
   , cryptoAlgorithmTests
   , validationTests
   , sbvTests
+  , configLintTests
+  , preIssuanceTests
+  , jsonReportTests
   ]
 
 -- | Basic unit tests for core functionality
@@ -64,3 +70,12 @@ validationTests = ValidationTests.tests
 -- | SBV formal verification tests
 sbvTests :: TestTree
 sbvTests = SBVTests.tests
+
+configLintTests :: TestTree
+configLintTests = ConfigLintTests.tests
+
+preIssuanceTests :: TestTree
+preIssuanceTests = PreIssuanceTests.tests
+
+jsonReportTests :: TestTree
+jsonReportTests = JsonReportTests.tests
