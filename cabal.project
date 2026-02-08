@@ -8,7 +8,7 @@ packages:
 source-repository-package
   type: git
   location: https://github.com/tatac1/crypton-certificate.git
-  tag: 65dec8965978ab8844615a7262cd8b7fcb48a8cc
+  tag: a736c6a87d7444533a3bd98959dd96833b7c3006
   subdir:
     crypton-x509
     crypton-x509-store

@@ -21,7 +21,7 @@ RUN cabal update
 # branch, which fails when the commit lives on a different branch.
 RUN git clone --no-single-branch https://github.com/tatac1/crypton-certificate.git /build/deps/crypton-certificate && \
     cd /build/deps/crypton-certificate && \
-    git checkout 65dec8965978ab8844615a7262cd8b7fcb48a8cc
+    git checkout a736c6a87d7444533a3bd98959dd96833b7c3006
 
 # Copy cabal.project files first for better caching
 # Use cabal.project.container which references local deps instead of git
