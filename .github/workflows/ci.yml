@@ -15,45 +15,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Haskell
+      - name: Setup Haskell (Stack)
         uses: haskell-actions/setup@v2
         with:
-          ghc-version: '9.6'
-          cabal-version: '3.10'
+          enable-stack: true
+          stack-version: 'latest'
 
-      - name: Cache Cabal
+      - name: Cache Stack
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cabal/packages
-            ~/.cabal/store
-            dist-newstyle
-          key: ${{ runner.os }}-ci-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
+            ~/.stack
+            .stack-work
+          key: ${{ runner.os }}-stack-${{ hashFiles('stack.yaml', 'stack.yaml.lock', '**/*.cabal') }}
           restore-keys: |
-            ${{ runner.os }}-ci-cabal-
+            ${{ runner.os }}-stack-
 
       - name: Install Z3 SMT solver
         run: |
           sudo apt-get update
           sudo apt-get install -y z3
 
-      - name: Update Cabal
-        run: cabal update
-
       - name: Build all packages
-        run: cabal build all
+        run: stack build --test --no-run-tests
 
       - name: Run tests for tcg-platform-cert
-        run: cabal test tcg-platform-cert --test-show-details=direct
+        run: stack test tcg-platform-cert
 
       - name: Run tests for tcg-platform-cert-compliance
-        run: cabal test tcg-platform-cert-compliance --test-show-details=direct
+        run: stack test tcg-platform-cert-compliance
 
       - name: Run tests for tcg-platform-cert-validation
-        run: cabal test tcg-platform-cert-validation --test-show-details=direct
+        run: stack test tcg-platform-cert-validation
 
       - name: Run tests for tcg-platform-cert-util
-        run: cabal test tcg-platform-cert-util --test-show-details=direct
+        run: stack test tcg-platform-cert-util
 
       - name: Run tests for platform-hardware-info
-        run: cabal test platform-hardware-info --test-show-details=direct
+        run: stack test platform-hardware-info
