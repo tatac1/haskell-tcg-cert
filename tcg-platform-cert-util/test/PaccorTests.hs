@@ -11,11 +11,23 @@ import Data.X509.TCG.Util.Paccor
 import Data.X509.TCG.Util.Config (PlatformCertConfig(..), SecurityAssertionsConfig(..))
 import Data.X509.TCG.Util.Certificate (loadCACertificate)
 
+-- Test fixture paths (relative to package root)
+fixturePolicyRef :: FilePath
+fixturePolicyRef = "test/fixtures/PolicyReference.json"
+
+fixtureComponentList :: FilePath
+fixtureComponentList = "test/fixtures/ComponentList.json"
+
+fixtureExtensions :: FilePath
+fixtureExtensions = "test/fixtures/Extensions.json"
+
+fixtureCACert :: FilePath
+fixtureCACert = "test/fixtures/TestCA.cert.pem"
+
 paccorTests :: TestTree
 paccorTests = testGroup "Paccor Config Parsing"
   [ testCase "parse PolicyReference.json" $ do
-      result <- loadPaccorPolicyReference
-        "/tmp/iwg-interop-example-platcert-pr21/public/platform_certs/v1.1/config/PolicyReference.json"
+      result <- loadPaccorPolicyReference fixturePolicyRef
       case result of
         Left err -> assertFailure $ "Failed to parse: " ++ err
         Right pr -> do
@@ -63,13 +75,13 @@ paccorTests = testGroup "Paccor Config Parsing"
   , testCase "merge PolicyReference into PlatformCertConfig" $ do
       -- Load ComponentList
       configResult <- loadAnyConfig
-        "/tmp/iwg-interop-example-platcert-pr21/public/platform_certs/v1.1/config/ComponentList_PCUseCase1.json"
+        fixtureComponentList
       config <- case configResult of
         Left err -> assertFailure ("Config: " ++ err) >> undefined
         Right c -> return c
       -- Load PolicyReference
       prResult <- loadPaccorPolicyReference
-        "/tmp/iwg-interop-example-platcert-pr21/public/platform_certs/v1.1/config/PolicyReference.json"
+        fixturePolicyRef
       pr <- case prResult of
         Left err -> assertFailure ("PolicyRef: " ++ err) >> undefined
         Right p -> return p
@@ -98,7 +110,7 @@ paccorTests = testGroup "Paccor Config Parsing"
 
   , testCase "parse Extensions.json" $ do
       result <- loadPaccorExtensions
-        "/tmp/iwg-interop-example-platcert-pr21/public/platform_certs/v1.1/config/Extensions.json"
+        fixtureExtensions
       case result of
         Left err -> assertFailure $ "Failed to parse: " ++ err
         Right ext -> do
@@ -136,20 +148,20 @@ paccorTests = testGroup "Paccor Config Parsing"
   , testCase "end-to-end: load all paccor configs and merge" $ do
       -- Load ComponentList
       configResult <- loadAnyConfig
-        "/tmp/iwg-interop-example-platcert-pr21/public/platform_certs/v1.1/config/ComponentList_PCUseCase1.json"
+        fixtureComponentList
       config0 <- case configResult of
         Left err -> assertFailure ("Config: " ++ err) >> undefined
         Right c -> return c
       -- Load PolicyReference and merge
       prResult <- loadPaccorPolicyReference
-        "/tmp/iwg-interop-example-platcert-pr21/public/platform_certs/v1.1/config/PolicyReference.json"
+        fixturePolicyRef
       pr <- case prResult of
         Left err -> assertFailure ("PolicyRef: " ++ err) >> undefined
         Right p -> return p
       let config = mergePolicyReference pr config0
       -- Load Extensions and convert
       extResult <- loadPaccorExtensions
-        "/tmp/iwg-interop-example-platcert-pr21/public/platform_certs/v1.1/config/Extensions.json"
+        fixtureExtensions
       ext <- case extResult of
         Left err -> assertFailure ("Extensions: " ++ err) >> undefined
         Right e -> return e
@@ -168,7 +180,7 @@ paccorTests = testGroup "Paccor Config Parsing"
 
   , testCase "convert PaccorExtensions to X.509 Extensions" $ do
       result <- loadPaccorExtensions
-        "/tmp/iwg-interop-example-platcert-pr21/public/platform_certs/v1.1/config/Extensions.json"
+        fixtureExtensions
       ext <- case result of
         Left err -> assertFailure err >> undefined
         Right e -> return e
@@ -194,7 +206,7 @@ paccorTests = testGroup "Paccor Config Parsing"
   , testCase "build AKI extension from CA certificate (CHN-001)" $ do
       -- Load IWG CA certificate which should have a Subject Key Identifier
       caCertResult <- loadCACertificate
-        "/tmp/iwg-interop-example-platcert-pr21/public/pki/oem/ecc/leaf/TCG_OEM_ecc_p256_TestCA_Leaf.pem"
+        fixtureCACert
       caCert <- case caCertResult of
         Left err -> assertFailure ("CA cert: " ++ err) >> undefined
         Right c -> return c
