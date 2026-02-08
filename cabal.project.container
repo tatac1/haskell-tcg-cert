@@ -1,0 +1,17 @@
+-- cabal.project for container builds
+-- Uses pre-cloned local deps instead of git source-repository-package
+
+packages:
+  platform-hardware-info
+  tcg-platform-cert
+  tcg-platform-cert-compliance
+  tcg-platform-cert-validation
+  tcg-platform-cert-util
+
+-- Use local clone (pre-cloned in Containerfile)
+packages:
+  deps/crypton-certificate/crypton-x509
+  deps/crypton-certificate/crypton-x509-store
+  deps/crypton-certificate/crypton-x509-validation
+  deps/crypton-certificate/crypton-x509-system
+  deps/crypton-certificate/crypton-x509-ac-validation

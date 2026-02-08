@@ -16,8 +16,16 @@ WORKDIR /build
 # Update cabal package list
 RUN cabal update
 
-# Copy cabal.project and cabal files first for better caching
-COPY cabal.project .
+# Pre-clone crypton-certificate with all branches so the specific commit
+# is available. cabal's source-repository-package only fetches the default
+# branch, which fails when the commit lives on a different branch.
+RUN git clone --no-single-branch https://github.com/tatac1/crypton-certificate.git /build/deps/crypton-certificate && \
+    cd /build/deps/crypton-certificate && \
+    git checkout 65dec8965978ab8844615a7262cd8b7fcb48a8cc
+
+# Copy cabal.project files first for better caching
+# Use cabal.project.container which references local deps instead of git
+COPY cabal.project.container cabal.project
 COPY cabal.project.static .
 COPY platform-hardware-info/platform-hardware-info.cabal platform-hardware-info/
 COPY tcg-platform-cert/tcg-platform-cert.cabal tcg-platform-cert/
