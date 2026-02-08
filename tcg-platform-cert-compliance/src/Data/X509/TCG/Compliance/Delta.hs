@@ -156,9 +156,9 @@ extractDNsFromGeneralNames (_ : rest) = extractDNsFromGeneralNames rest
 extractIssuerDNs :: AttCertIssuer -> [DistinguishedName]
 extractIssuerDNs (AttCertIssuerV1 gns) = extractDNsFromGeneralNames gns
 extractIssuerDNs (AttCertIssuerV2 v2form) =
-  case v2fromBaseCertificateID v2form of
+  case v2formBaseCertificateID v2form of
     Just issuerSerial -> extractDNsFromGeneralNames (issuer issuerSerial)
-    Nothing -> extractDNsFromGeneralNames (v2fromIssuerName v2form)
+    Nothing -> extractDNsFromGeneralNames (v2formIssuerName v2form)
 
 getDeltaConfiguration :: SignedPlatformCertificate -> Either T.Text (Maybe ParsedPlatformConfiguration)
 getDeltaConfiguration = getParsedPlatformConfiguration

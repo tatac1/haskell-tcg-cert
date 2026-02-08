@@ -163,8 +163,8 @@ validateIssuerNotEmpty :: AttCertIssuer -> Either Text ()
 validateIssuerNotEmpty (AttCertIssuerV1 _) =
   Left "Issuer MUST use v2Form per IWG Profile §3.2.5 (v1Form is not allowed)"
 validateIssuerNotEmpty (AttCertIssuerV2 v2form)
-  | hasDirectoryName (v2fromIssuerName v2form) = Right ()
-  | null (v2fromIssuerName v2form) = Left "Issuer (v2Form) has empty issuerName"
+  | hasDirectoryName (v2formIssuerName v2form) = Right ()
+  | null (v2formIssuerName v2form) = Left "Issuer (v2Form) has empty issuerName"
   | otherwise = Left "Issuer (v2Form) must include distinguished name (directoryName)"
 
 hasDirectoryName :: [AltName] -> Bool
