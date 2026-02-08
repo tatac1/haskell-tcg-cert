@@ -67,19 +67,21 @@ tcg-platform-cert-util generate \
   --manufacturer "Acme Corp" --model "Server X1" --version "1.0" \
   --ca-key ca-key.pem --ca-cert ca-cert.pem --ek-cert ek-cert.pem
 
-# From paccor config files (ComponentList + Extensions + PolicyReference)
+# From paccor config files (auto-detects PolicyReference.json + Extensions.json)
 tcg-platform-cert-util generate \
-  --use-paccor-signer \
   --config ComponentList_PCUseCase1.json \
-  --ca-key TCG_OEM_ecc_p256_TestCA_Leaf.key \
-  --ca-cert TCG_OEM_ecc_p256_TestCA_Leaf.pem \
-  --ek-cert TCG_EK_ecc_p256_Test.pem \
-  --paccor-signer /opt/paccor/bin/signer \
-  --paccor-validator /opt/paccor/bin/validator \
-  --paccor-cert-serial 23 \
-  --paccor-not-before 20180101 \
-  --paccor-not-after 20680101 \
-  --output TCG_PlatCert_v1.1_PCUseCase1_ecc_p256_Test.pem
+  --ca-key ca-key.pem --ca-cert ca-cert.pem \
+  --ek-cert ek-cert.pem \
+  --output platform-cert.pem
+
+# With explicit paths for PolicyReference and Extensions
+tcg-platform-cert-util generate \
+  --config ComponentList.json \
+  --policy-ref PolicyReference.json \
+  --extensions Extensions.json \
+  --ca-key ca-key.pem --ca-cert ca-cert.pem \
+  --ek-cert ek-cert.pem \
+  --output platform-cert.pem
 ```
 
 | Option | Short | Required | Description |
@@ -99,15 +101,8 @@ tcg-platform-cert-util generate \
 | `--skip-compliance` | | No | Skip pre-issuance compliance checks |
 | `--compat` | | No | OperationalCompatibility mode (default) |
 | `--strict-v11` | | No | Strict IWG v1.1 mode |
-| `--use-paccor-signer` | | No | Delegate generation to paccor signer using paccor JSON files |
-| `--paccor-extensions FILE` | | No | `Extensions.json` path (default: same directory as `--config`) |
-| `--paccor-policy FILE` | | No | `PolicyReference.json` path (default: same directory as `--config`) |
-| `--paccor-signer FILE` | | No | `signer` binary path (or `$PACCOR_SIGNER_PATH`) |
-| `--paccor-validator FILE` | | No | `validator` binary path (optional) |
-| `--paccor-cert-serial NUM` | | No | Certificate serial passed to paccor `-N` |
-| `--paccor-not-before YYYYMMDD` | | No | `notBefore` passed to paccor `-b` |
-| `--paccor-not-after YYYYMMDD` | | No | `notAfter` passed to paccor `-a` |
-| `--paccor-holder FILE` | | No | Holder file passed to paccor `-e` (default: `--ek-cert`) |
+| `--policy-ref FILE` | | No | `PolicyReference.json` path (auto-detected from `--config` dir) |
+| `--extensions FILE` | | No | `Extensions.json` path (auto-detected from `--config` dir) |
 | `--json` | | No | Output results as JSON |
 
 Pre-issuance checking runs automatically unless `--skip-compliance` is set:
