@@ -35,18 +35,26 @@ tests = testGroup "SBV Formal Verification Tests"
   , validationFunctionProofs
   , stringConstraintProofs
   , sbvModelExtractionTests
+  , asn1StructureProofs
   ]
+
+-- * Helpers
+
+-- | Assert that an SBV predicate is a theorem (universally valid)
+assertTheorem :: String -> Predicate -> Assertion
+assertTheorem msg prop = do
+  result <- proveWith z3{verbose=False} prop
+  case result of
+    ThmResult (Unsatisfiable {}) -> return ()
+    _ -> assertFailure $ msg ++ " proof failed: " ++ show result
 
 -- * Basic SBV Integration Tests
 
 -- | Basic integration tests to ensure SBV works with TCG modules
 basicSBVIntegrationTests :: TestTree
 basicSBVIntegrationTests = testGroup "SBV Integration Tests"
-  [ testCase "SBV solver is available" $ do
-      result <- proveWith z3{verbose=False} (return sTrue :: Predicate)
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "SBV solver not working correctly"
+  [ testCase "SBV solver is available" $
+      assertTheorem "SBV solver" (return sTrue :: Predicate)
   ]
 
 -- * TCG OID Formal Proofs (Section 2 of IWG v1.1)
@@ -54,29 +62,17 @@ basicSBVIntegrationTests = testGroup "SBV Integration Tests"
 -- | Formal verification of TCG OID structure per specification
 tcgOIDProofs :: TestTree
 tcgOIDProofs = testGroup "TCG OID Structure Proofs"
-  [ testCase "TCG root OID arc is valid (2.23.133)" $ do
-      result <- proveWith z3{verbose=False} tcgRootOIDProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "TCG root OID arc validation failed"
+  [ testCase "TCG root OID arc is valid (2.23.133)" $
+      assertTheorem "TCG root OID" tcgRootOIDProperty
 
-  , testCase "TCG attribute arc structure (2.23.133.2.*)" $ do
-      result <- proveWith z3{verbose=False} tcgAttributeArcProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "TCG attribute arc structure proof failed"
+  , testCase "TCG attribute arc structure (2.23.133.2.*)" $
+      assertTheorem "TCG attribute arc" tcgAttributeArcProperty
 
-  , testCase "TCG key purpose arc structure (2.23.133.8.*)" $ do
-      result <- proveWith z3{verbose=False} tcgKeyPurposeArcProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "TCG key purpose arc structure proof failed"
+  , testCase "TCG key purpose arc structure (2.23.133.8.*)" $
+      assertTheorem "TCG key purpose arc" tcgKeyPurposeArcProperty
 
-  , testCase "Component class registry OID validity (2.23.133.18.*)" $ do
-      result <- proveWith z3{verbose=False} componentClassRegistryProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Component class registry OID proof failed"
+  , testCase "Component class registry OID validity (2.23.133.18.*)" $
+      assertTheorem "Component class registry OID" componentClassRegistryProperty
   ]
 
 -- * Platform Certificate Proofs (Section 3.1 of IWG v1.1)
@@ -84,35 +80,20 @@ tcgOIDProofs = testGroup "TCG OID Structure Proofs"
 -- | Formal verification of Platform Certificate structure
 platformCertificateProofs :: TestTree
 platformCertificateProofs = testGroup "Platform Certificate Structure Proofs"
-  [ testCase "Certificate version constraint (v2)" $ do
-      result <- proveWith z3{verbose=False} certificateVersionProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Certificate version validation proof failed"
+  [ testCase "Certificate version constraint (v2)" $
+      assertTheorem "Certificate version" certificateVersionProperty
 
-  , testCase "Serial number positivity constraint" $ do
-      result <- proveWith z3{verbose=False} serialNumberConstraintProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Serial number constraint proof failed"
+  , testCase "Serial number positivity constraint" $
+      assertTheorem "Serial number" serialNumberConstraintProperty
 
-  , testCase "Validity period ordering" $ do
-      result <- proveWith z3{verbose=False} validityPeriodProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Validity period proof failed"
+  , testCase "Validity period ordering" $
+      assertTheorem "Validity period" validityPeriodProperty
 
-  , testCase "Platform identification completeness" $ do
-      result <- proveWith z3{verbose=False} platformIdentificationProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Platform identification completeness proof failed"
+  , testCase "Platform identification completeness" $
+      assertTheorem "Platform identification" platformIdentificationProperty
 
-  , testCase "EK Certificate holder binding" $ do
-      result <- proveWith z3{verbose=False} ekCertificateBindingProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "EK Certificate binding proof failed"
+  , testCase "EK Certificate holder binding" $
+      assertTheorem "EK Certificate binding" ekCertificateBindingProperty
   ]
 
 -- * Component Identifier Proofs (Section 3.1.6 of IWG v1.1)
@@ -120,29 +101,17 @@ platformCertificateProofs = testGroup "Platform Certificate Structure Proofs"
 -- | Formal verification of Component Identifier structures
 componentIdentifierProofs :: TestTree
 componentIdentifierProofs = testGroup "Component Identifier Proofs"
-  [ testCase "Component class size constraint (4 bytes)" $ do
-      result <- proveWith z3{verbose=False} componentClassSizeProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Component class size proof failed"
+  [ testCase "Component class size constraint (4 bytes)" $
+      assertTheorem "Component class size" componentClassSizeProperty
 
-  , testCase "Component manufacturer STRMAX constraint" $ do
-      result <- proveWith z3{verbose=False} componentManufacturerSTRMAXProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Component manufacturer STRMAX proof failed"
+  , testCase "Component manufacturer STRMAX constraint" $
+      assertTheorem "Component manufacturer STRMAX" componentManufacturerSTRMAXProperty
 
-  , testCase "Component address type OID validity" $ do
-      result <- proveWith z3{verbose=False} componentAddressTypeProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Component address type OID proof failed"
+  , testCase "Component address type OID validity" $
+      assertTheorem "Component address type OID" componentAddressTypeProperty
 
-  , testCase "ComponentIdentifierV2 status enumeration" $ do
-      result <- proveWith z3{verbose=False} componentStatusEnumProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Component status enumeration proof failed"
+  , testCase "ComponentIdentifierV2 status enumeration" $
+      assertTheorem "Component status enum" componentStatusEnumProperty
   ]
 
 -- * TBBSecurityAssertions Proofs (Section 3.1.1 of IWG v1.1)
@@ -150,23 +119,14 @@ componentIdentifierProofs = testGroup "Component Identifier Proofs"
 -- | Formal verification of TBBSecurityAssertions
 tbbSecurityAssertionsProofs :: TestTree
 tbbSecurityAssertionsProofs = testGroup "TBBSecurityAssertions Proofs"
-  [ testCase "FIPS Level range constraint (1-4)" $ do
-      result <- proveWith z3{verbose=False} fipsLevelRangeProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "FIPS Level range proof failed"
+  [ testCase "FIPS Level range constraint (1-4)" $
+      assertTheorem "FIPS Level range" fipsLevelRangeProperty
 
-  , testCase "Common Criteria EAL range constraint (1-7)" $ do
-      result <- proveWith z3{verbose=False} ccEALRangeProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Common Criteria EAL range proof failed"
+  , testCase "Common Criteria EAL range constraint (1-7)" $
+      assertTheorem "CC EAL range" ccEALRangeProperty
 
-  , testCase "RTM Type enumeration constraint (1-3)" $ do
-      result <- proveWith z3{verbose=False} rtmTypeRangeProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "RTM Type range proof failed"
+  , testCase "RTM Type enumeration constraint (1-3)" $
+      assertTheorem "RTM Type range" rtmTypeRangeProperty
 
   , testCase "Boolean value constraint" $ do
       result <- satWith z3{verbose=False} booleanValueProperty
@@ -180,17 +140,11 @@ tbbSecurityAssertionsProofs = testGroup "TBBSecurityAssertions Proofs"
 -- | Formal verification of Delta certificate operations
 deltaOperationProofs :: TestTree
 deltaOperationProofs = testGroup "Delta Operation Formal Proofs"
-  [ testCase "Delta base reference constraint" $ do
-      result <- proveWith z3{verbose=False} deltaBaseReferenceProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Delta base reference proof failed"
+  [ testCase "Delta base reference constraint" $
+      assertTheorem "Delta base reference" deltaBaseReferenceProperty
 
-  , testCase "Component modification status consistency" $ do
-      result <- proveWith z3{verbose=False} componentModificationConsistencyProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Component modification consistency proof failed"
+  , testCase "Component modification status consistency" $
+      assertTheorem "Component modification consistency" componentModificationConsistencyProperty
   ]
 
 -- * Validation Function Proofs
@@ -198,23 +152,14 @@ deltaOperationProofs = testGroup "Delta Operation Formal Proofs"
 -- | Formal verification of validation functions
 validationFunctionProofs :: TestTree
 validationFunctionProofs = testGroup "Validation Function Formal Proofs"
-  [ testCase "Signature algorithm OID completeness" $ do
-      result <- proveWith z3{verbose=False} signatureAlgorithmOIDProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Signature algorithm OID proof failed"
+  [ testCase "Signature algorithm OID completeness" $
+      assertTheorem "Signature algorithm OID" signatureAlgorithmOIDProperty
 
-  , testCase "URI format validation constraint" $ do
-      result <- proveWith z3{verbose=False} uriFormatValidationProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "URI format validation proof failed"
+  , testCase "URI format validation constraint" $
+      assertTheorem "URI format validation" uriFormatValidationProperty
 
-  , testCase "Holder reference constraint" $ do
-      result <- proveWith z3{verbose=False} holderEKReferenceProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Holder EK reference proof failed"
+  , testCase "Holder reference constraint" $
+      assertTheorem "Holder EK reference" holderEKReferenceProperty
   ]
 
 -- * String Constraint Proofs (STRMAX per specification)
@@ -222,23 +167,14 @@ validationFunctionProofs = testGroup "Validation Function Formal Proofs"
 -- | Formal verification of string length constraints
 stringConstraintProofs :: TestTree
 stringConstraintProofs = testGroup "String Constraint Proofs"
-  [ testCase "STRMAX definition (255 characters)" $ do
-      result <- proveWith z3{verbose=False} strmaxDefinitionProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "STRMAX definition proof failed"
+  [ testCase "STRMAX definition (255 characters)" $
+      assertTheorem "STRMAX definition" strmaxDefinitionProperty
 
-  , testCase "UTF8String encoding constraint" $ do
-      result <- proveWith z3{verbose=False} utf8EncodingProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "UTF8 encoding preservation proof failed"
+  , testCase "UTF8String encoding constraint" $
+      assertTheorem "UTF8 encoding" utf8EncodingProperty
 
-  , testCase "Platform manufacturer length constraint" $ do
-      result <- proveWith z3{verbose=False} platformManufacturerLengthProperty
-      case result of
-        ThmResult (Unsatisfiable {}) -> return ()
-        _ -> assertFailure "Platform manufacturer length proof failed"
+  , testCase "Platform manufacturer length constraint" $
+      assertTheorem "Platform manufacturer length" platformManufacturerLengthProperty
   ]
 
 -- * SBV Helper Function Tests
@@ -735,3 +671,175 @@ sbvModelExtractionTests = testGroup "SBV Model Extraction"
               pairs = extractUriHashPairs cert
           length pairs @?= length uris
   ]
+
+-- * ASN.1 Structure Formal Proofs (IWG v1.1 DER encoding)
+
+-- | ASN.1 structure proofs: DER DEFAULT rules, tag invariants, VLQ encoding
+asn1StructureProofs :: TestTree
+asn1StructureProofs = testGroup "ASN.1 Structure Proofs"
+  [ derDefaultProofs
+  , componentTagProofs
+  , evaluationStatusProofs
+  , vlqEncodingProofs
+  ]
+
+-- ** Stage 1: Scalar constraint proofs
+
+-- | DER DEFAULT omission rules (§11.5)
+derDefaultProofs :: TestTree
+derDefaultProofs = testGroup "DER DEFAULT Omission Proofs"
+  [ testCase "BOOLEAN DEFAULT FALSE dichotomy" $
+      assertTheorem "DER DEFAULT BOOLEAN" derDefaultBoolProperty
+
+  , testCase "INTEGER DEFAULT 0 dichotomy" $
+      assertTheorem "DER DEFAULT INTEGER" derDefaultIntProperty
+  ]
+
+-- | ComponentIdentifierV2 tag invariants
+componentTagProofs :: TestTree
+componentTagProofs = testGroup "ComponentIdentifierV2 Tag Proofs"
+  [ testCase "Tags [0]-[7] are unique" $
+      assertTheorem "Component tag uniqueness" componentTagUniquenessProperty
+
+  , testCase "Tags [0]-[7] are consecutive" $
+      assertTheorem "Component tag consecutive" componentTagConsecutiveProperty
+
+  , testCase "Primitive/Constructed XOR classification" $
+      assertTheorem "Tag classification" tagClassificationProperty
+  ]
+
+-- | EvaluationStatus domain completeness
+evaluationStatusProofs :: TestTree
+evaluationStatusProofs = testGroup "EvaluationStatus Domain Proofs"
+  [ testCase "EvaluationStatus enum ↔ range [0,2]" $
+      assertTheorem "EvaluationStatus domain" evaluationStatusDomainProperty
+  ]
+
+-- ** Stage 2: VLQ byte-count case split proofs
+
+-- | OID VLQ encoding proofs
+vlqEncodingProofs :: TestTree
+vlqEncodingProofs = testGroup "OID VLQ Encoding Proofs"
+  [ testCase "OID first-two-arcs injectivity" $
+      assertTheorem "OID first-two-arcs injectivity" oidFirstTwoArcsProperty
+
+  , testCase "VLQ 1-byte roundtrip (n < 128)" $
+      assertTheorem "VLQ 1-byte roundtrip" vlq1ByteProperty
+
+  , testCase "VLQ 2-byte roundtrip (128 ≤ n < 16384)" $
+      assertTheorem "VLQ 2-byte roundtrip" vlq2ByteProperty
+
+  , testCase "VLQ 3-byte roundtrip (16384 ≤ n < 2097152)" $
+      assertTheorem "VLQ 3-byte roundtrip" vlq3ByteProperty
+  ]
+
+-- * Stage 1 Property Definitions
+
+-- | DER §11.5: BOOLEAN DEFAULT FALSE — encode iff value ≠ default
+-- Theorem: shouldEncode(v) ↔ v ≠ False ↔ v == True
+derDefaultBoolProperty :: Predicate
+derDefaultBoolProperty = do
+  v <- sBool "value"
+  let shouldEncode = v
+  let isDefault = sNot v
+  return $ shouldEncode .<=> sNot isDefault
+
+-- | DER §11.5: INTEGER DEFAULT 0 — encode iff value ≠ 0
+-- Applies to: TBBSecurityAssertions.version DEFAULT v1(0)
+derDefaultIntProperty :: Predicate
+derDefaultIntProperty = do
+  v <- free "version" :: Symbolic (SBV Integer)
+  let shouldEncode = v ./= 0
+  let isDefault = v .== 0
+  return $ shouldEncode .<=> sNot isDefault
+
+-- | Tags [0]-[7] are all distinct (fixed concrete values)
+componentTagUniquenessProperty :: Predicate
+componentTagUniquenessProperty = do
+  let tags = map literal [0..7 :: Word8]
+  return $ sAnd [t1 ./= t2 | (t1, i) <- zip tags [0 :: Int ..],
+                              (t2, j) <- zip tags [0 ..], i < j]
+
+-- | Tags are consecutive: tag[i+1] == tag[i] + 1
+componentTagConsecutiveProperty :: Predicate
+componentTagConsecutiveProperty = do
+  let tags = map literal [0..7 :: Word8]
+  return $ sAnd $ zipWith (.==) (drop 1 tags) (map (+1) (take 7 tags))
+
+-- | ComponentIdentifierV2 IMPLICIT tag classification:
+-- [0]-[3],[7]: primitive (Other Context N), [4]-[6]: constructed (Container Context N)
+-- Valid tag ⇒ exactly one of primitive XOR constructed
+tagClassificationProperty :: Predicate
+tagClassificationProperty = do
+  tag <- free "tag" :: Symbolic (SBV Word8)
+  let isPrimitive = sAny (.== tag) (map literal [0, 1, 2, 3, 7 :: Word8])
+  let isConstructed = sAny (.== tag) (map literal [4, 5, 6 :: Word8])
+  let isValidTag = tag .<= 7
+  return $ isValidTag .=> (isPrimitive .<+> isConstructed)
+
+-- | EvaluationStatus: designedToMeet=0, inProgress=1, completed=2 (IWG Task 7)
+evaluationStatusDomainProperty :: Predicate
+evaluationStatusDomainProperty = do
+  x <- free "eval_status" :: Symbolic (SBV Word8)
+  let enumSet = sAny (.== x) (map literal [0, 1, 2 :: Word8])
+  let rangeCheck = x .<= 2
+  return $ enumSet .<=> rangeCheck
+
+-- * Stage 2 Property Definitions
+
+-- | OID first-two-arcs injectivity: 40*a+b encoding is injective
+-- under valid OID constraints (a ≤ 2, a < 2 ⇒ b < 40, 40*a+b ≤ 255)
+-- Uses SBV Integer (arbitrary precision) to avoid modular arithmetic overflow.
+oidFirstTwoArcsProperty :: Predicate
+oidFirstTwoArcsProperty = do
+  a <- free "arc1" :: Symbolic (SBV Integer)
+  b <- free "arc2" :: Symbolic (SBV Integer)
+  constrain $ a .>= 0 .&& a .<= 2
+  constrain $ b .>= 0
+  constrain $ (a .< 2) .=> (b .< 40)
+  let combined = 40 * a + b
+  constrain $ combined .<= 255
+  a2 <- free "arc1'" :: Symbolic (SBV Integer)
+  b2 <- free "arc2'" :: Symbolic (SBV Integer)
+  constrain $ a2 .>= 0 .&& a2 .<= 2
+  constrain $ b2 .>= 0
+  constrain $ (a2 .< 2) .=> (b2 .< 40)
+  let combined2 = 40 * a2 + b2
+  constrain $ combined2 .<= 255
+  return $ (combined .== combined2) .=> (a .== a2 .&& b .== b2)
+
+-- | VLQ 1-byte: n < 128, encoded as single byte with no continuation bit
+vlq1ByteProperty :: Predicate
+vlq1ByteProperty = do
+  n <- free "n" :: Symbolic (SBV Word32)
+  constrain $ n .< 128
+  let encoded = n .&. 0x7F
+  return $ encoded .== n .&& (n .&. 0x80 .== 0)
+
+-- | VLQ 2-byte: 128 ≤ n < 16384, roundtrip + continuation bit invariant
+vlq2ByteProperty :: Predicate
+vlq2ByteProperty = do
+  n <- free "n" :: Symbolic (SBV Word32)
+  constrain $ n .>= 128 .&& n .< 16384
+  let hi = (n `shiftR` 7) .|. 0x80
+  let lo = n .&. 0x7F
+  let decoded = ((hi .&. 0x7F) `shiftL` 7) .|. lo
+  return $ decoded .== n
+       .&& (hi .&. 0x80 .== 0x80)
+       .&& (lo .&. 0x80 .== 0)
+
+-- | VLQ 3-byte: 16384 ≤ n < 2097152, roundtrip + continuation bit invariant
+vlq3ByteProperty :: Predicate
+vlq3ByteProperty = do
+  n <- free "n" :: Symbolic (SBV Word32)
+  constrain $ n .>= 16384 .&& n .< 2097152
+  let b0 = (n `shiftR` 14) .|. 0x80
+  let b1 = ((n `shiftR` 7) .&. 0x7F) .|. 0x80
+  let b2 = n .&. 0x7F
+  let decoded = ((b0 .&. 0x7F) `shiftL` 14)
+            .|. ((b1 .&. 0x7F) `shiftL` 7)
+            .|. b2
+  return $ decoded .== n
+       .&& (b0 .&. 0x80 .== 0x80)
+       .&& (b1 .&. 0x80 .== 0x80)
+       .&& (b2 .&. 0x80 .== 0)

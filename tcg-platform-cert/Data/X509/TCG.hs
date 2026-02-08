@@ -120,6 +120,13 @@ module Data.X509.TCG
     buildAttributesFromConfigExt,
     mkPlatformCertificateExt,
     oidToContentBytes,
+
+    -- * Internal (exported for testing)
+    encodeComponentIdentifierV2,
+    encodeComponentClass,
+    buildTBBSecurityAssertionsAttr,
+    buildExtendedTCGAttrs,
+    buildPlatformConfigurationV2Attr,
   )
 where
 

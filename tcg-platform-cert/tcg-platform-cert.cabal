@@ -83,6 +83,7 @@ test-suite test-tcg-platform-cert
     , Tests.Properties
     , Tests.Arbitrary
     , Tests.SBV
+    , Tests.GoldenASN1
 
   build-depends:
       tcg-platform-cert

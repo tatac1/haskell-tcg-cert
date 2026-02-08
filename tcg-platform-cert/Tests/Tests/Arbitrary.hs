@@ -19,6 +19,7 @@ import Data.X509.TCG.Platform
 import Data.X509.TCG.Component
 import Data.X509.TCG.Delta
 import Data.X509.TCG.Attributes()
+import Data.X509.TCG (TBBSecurityAssertions(..), ComponentConfigV2(..))
 
 -- * Helper generators
 
@@ -147,6 +148,63 @@ instance Arbitrary ChangeMetadata where
     <*> oneof [pure Nothing, Just <$> genIdentifier]  -- rollbackInfo
     <*> listOf ((,) <$> genIdentifier <*> genIdentifier)  -- additionalInfo
 
--- * Note: Complex Attribute Types with multiple fields
--- TODO: Implement full Arbitrary instances for attribute types
--- For now, we focus on basic types that can be tested
+-- * Extended TCG Types (IWG v1.1)
+
+-- | Generate a short IA5String (ASCII) bytestring
+genIA5String :: Gen B.ByteString
+genIA5String = B.pack <$> listOf1 (choose ('0', '9'))
+
+instance Arbitrary TBBSecurityAssertions where
+  arbitrary = do
+    ver     <- elements [0, 1]
+    ccVer   <- oneof [pure Nothing, Just <$> genIA5String]
+    eal     <- oneof [pure Nothing, Just <$> choose (1, 7)]
+    evalSt  <- oneof [pure Nothing, Just <$> choose (0, 2)]
+    plus'   <- oneof [pure Nothing, Just <$> arbitrary]
+    sof     <- oneof [pure Nothing, Just <$> choose (0, 2)]
+    fipsVer <- oneof [pure Nothing, Just <$> genIA5String]
+    fipsLvl <- oneof [pure Nothing, Just <$> choose (1, 4)]
+    fipsP   <- oneof [pure Nothing, Just <$> arbitrary]
+    rtm     <- oneof [pure Nothing, Just <$> choose (0, 3)]
+    iso     <- oneof [pure Nothing, Just <$> arbitrary]
+    return TBBSecurityAssertions
+      { tbbVersion              = ver
+      , tbbCCVersion            = ccVer
+      , tbbEvalAssuranceLevel   = eal
+      , tbbEvalStatus           = evalSt
+      , tbbPlus                 = plus'
+      , tbbStrengthOfFunction   = sof
+      , tbbProtectionProfileOID = Nothing
+      , tbbProtectionProfileURI = Nothing
+      , tbbSecurityTargetOID    = Nothing
+      , tbbSecurityTargetURI    = Nothing
+      , tbbFIPSVersion          = fipsVer
+      , tbbFIPSSecurityLevel    = fipsLvl
+      , tbbFIPSPlus             = fipsP
+      , tbbRTMType              = rtm
+      , tbbISO9000Certified     = iso
+      , tbbISO9000URI           = Nothing
+      }
+
+instance Arbitrary ComponentConfigV2 where
+  arbitrary = do
+    cls   <- B.pack <$> vectorOf 4 arbitrary
+    mfg   <- genIdentifier
+    mdl   <- genIdentifier
+    ser   <- oneof [pure Nothing, Just <$> genSerial]
+    rev'  <- oneof [pure Nothing, Just <$> genVersion]
+    fr    <- oneof [pure Nothing, Just <$> arbitrary]
+    st    <- oneof [pure Nothing, Just <$> arbitrary]
+    return ComponentConfigV2
+      { ccv2Class           = cls
+      , ccv2Manufacturer    = mfg
+      , ccv2Model           = mdl
+      , ccv2Serial          = ser
+      , ccv2Revision        = rev'
+      , ccv2ManufacturerId  = Nothing   -- OID, complex to generate
+      , ccv2FieldReplaceable = fr
+      , ccv2Addresses       = Nothing   -- complex nested type
+      , ccv2PlatformCert    = Nothing   -- Maybe [ASN1], hard to generate
+      , ccv2PlatformCertUri = Nothing   -- Maybe [ASN1], hard to generate
+      , ccv2Status          = st
+      }

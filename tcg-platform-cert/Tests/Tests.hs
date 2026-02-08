@@ -12,6 +12,7 @@ import qualified Tests.Validation as Validation
 import qualified Tests.Utils as Utils
 import qualified Tests.Properties as Properties
 import qualified Tests.SBV as SBV
+import qualified Tests.GoldenASN1 as GoldenASN1
 
 main :: IO ()
 main = defaultMain tests
@@ -28,4 +29,5 @@ tests = testGroup "TCG Platform Certificate Tests"
   , Utils.tests
   , Properties.tests
   , SBV.tests
+  , GoldenASN1.tests
   ]

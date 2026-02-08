@@ -21,7 +21,9 @@ module Tests.Properties (
 
 import Test.Tasty
 import Test.Tasty.QuickCheck
-import Data.ASN1.Types (ASN1Object(..), ASN1)
+import Data.ASN1.Types (ASN1Object(..), ASN1(..))
+import Data.ASN1.Encoding (encodeASN1')
+import Data.ASN1.BinaryEncoding (DER(..))
 import Control.Exception (SomeException, evaluate, try)
 import qualified Data.ByteString as B
 import Data.Either (isLeft)
@@ -29,7 +31,9 @@ import Data.Word (Word8)
 import Data.X509.TCG.Platform
 import Data.X509.TCG.Delta
 import Data.X509.TCG.Component
-import Tests.Arbitrary()
+import Data.X509.TCG (TBBSecurityAssertions(..), buildTBBSecurityAssertionsAttr, oidToContentBytes)
+import Data.X509.Attribute (Attribute(..))
+import Tests.Arbitrary(genIA5String)
 
 -- | Property test for ASN.1 marshalling/unmarshalling roundtrip
 --
@@ -198,4 +202,89 @@ tests = testGroup "ASN.1 Marshalling Properties"
             Right decoded ->
               pure (decodeSignedDeltaPlatformCertificateWithLimit limit bs == decoded)
     ]
+  , testGroup "ASN.1 Structure Properties (IWG v1.1)"
+    [ testProperty "OID VLQ cross-validation with standard library" $
+        forAll genValidOID $ \arcs ->
+          let contentBytes = oidToContentBytes arcs
+              fullStandard = encodeASN1' DER [OID arcs]
+              contentLen = B.length contentBytes
+          in contentLen > 0
+             && contentLen <= 127
+             && B.length fullStandard == contentLen + 2
+             && B.index fullStandard 0 == 0x06
+             && B.index fullStandard 1 == fromIntegral contentLen
+             && B.drop 2 fullStandard == contentBytes
+
+    , testProperty "TBB version=0 omitted (DER DEFAULT)" $
+        \tbb -> tbbVersion tbb == 0 ==>
+          let Attribute _ vals = buildTBBSecurityAssertionsAttr tbb
+              flatVals = concat vals
+          in IntVal 0 `notElem` flatVals
+
+    , testProperty "TBB iso9000Certified=False omitted (DER DEFAULT)" $
+        \tbb -> (tbbISO9000Certified tbb == Just False
+              || tbbISO9000Certified tbb == Nothing) ==>
+          let Attribute _ vals = buildTBBSecurityAssertionsAttr tbb
+              flatVals = concat vals
+          in Boolean False `notElem` flatVals
+
+    , testProperty "TBB iso9000Certified=True present" $
+        \tbb -> tbbISO9000Certified tbb == Just True ==>
+          let Attribute _ vals = buildTBBSecurityAssertionsAttr tbb
+              flatVals = concat vals
+          in Boolean True `elem` flatVals
+
+    , testProperty "TBB plus=False omitted (DER DEFAULT)" $
+        \tbb -> (tbbPlus tbb == Just False || tbbPlus tbb == Nothing) ==>
+          let Attribute _ vals = buildTBBSecurityAssertionsAttr tbb
+              flatVals = concat vals
+          in Boolean False `notElem` flatVals
+
+    , testProperty "TBB plus=True present (CC block active)" $
+        forAll (do tbb <- arbitrary
+                   ccVer <- genIA5String
+                   eal <- choose (1, 7)
+                   return tbb { tbbPlus = Just True
+                              , tbbCCVersion = Just ccVer
+                              , tbbEvalAssuranceLevel = Just eal
+                              , tbbISO9000Certified = Nothing
+                              , tbbFIPSPlus = Nothing }) $ \tbb ->
+          let Attribute _ vals = buildTBBSecurityAssertionsAttr tbb
+              flatVals = concat vals
+          in Boolean True `elem` flatVals
+
+    , testProperty "TBB fipsPlus=False omitted (DER DEFAULT)" $
+        \tbb -> (tbbFIPSPlus tbb == Just False || tbbFIPSPlus tbb == Nothing) ==>
+          let Attribute _ vals = buildTBBSecurityAssertionsAttr tbb
+              flatVals = concat vals
+          in Boolean False `notElem` flatVals
+
+    , testProperty "TBB fipsPlus=True present (FIPS block active)" $
+        forAll (do tbb <- arbitrary
+                   fipsVer <- genIA5String
+                   fipsLvl <- choose (1, 4)
+                   return tbb { tbbFIPSPlus = Just True
+                              , tbbFIPSVersion = Just fipsVer
+                              , tbbFIPSSecurityLevel = Just fipsLvl
+                              , tbbISO9000Certified = Nothing
+                              , tbbPlus = Nothing }) $ \tbb ->
+          let Attribute _ vals = buildTBBSecurityAssertionsAttr tbb
+              flatVals = concat vals
+          in Boolean True `elem` flatVals
+
+    , testProperty "TBB encoding deterministic" $
+        \(tbb :: TBBSecurityAssertions) ->
+          buildTBBSecurityAssertionsAttr tbb == buildTBBSecurityAssertionsAttr tbb
+    ]
   ]
+
+-- * Valid OID generator for property tests
+
+-- | Generate a valid OID with 2+ arcs suitable for VLQ testing
+genValidOID :: Gen [Integer]
+genValidOID = do
+  a <- choose (0, 2 :: Integer)
+  b <- if a < 2 then choose (0, 39) else choose (0, 115)  -- 40*2+115=195 < 256
+  n <- choose (0, 10)  -- limit arc count for manageable DER size
+  rest <- vectorOf n (choose (0, 16383 :: Integer))  -- up to 2-byte VLQ
+  return (a : b : rest)
