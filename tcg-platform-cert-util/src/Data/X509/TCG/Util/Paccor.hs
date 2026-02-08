@@ -32,10 +32,32 @@ module Data.X509.TCG.Util.Paccor
   , PaccorGenericCertId(..)
   , PaccorGeneralName(..)
 
+    -- * PolicyReference Types
+  , PaccorPolicyReference(..)
+  , PaccorPlatformSpec(..)
+  , PaccorSpecVersion(..)
+  , PaccorTBBSecurityAssertions(..)
+  , PaccorCCInfo(..)
+  , PaccorFipsLevel(..)
+
+    -- * Extensions Types
+  , PaccorExtensions(..)
+  , PaccorCertPolicy(..)
+  , PaccorPolicyQualifier(..)
+  , PaccorAIAEntry(..)
+  , PaccorCRLDistPoint(..)
+  , PaccorDistName(..)
+
     -- * Conversion Functions
   , paccorToYamlConfig
   , loadPaccorConfig
   , savePaccorAsYaml
+  , loadPaccorPolicyReference
+  , mergePolicyReference
+  , loadPaccorExtensions
+  , paccorExtensionsToX509
+  , buildSanExtension
+  , buildAkiExtension
 
     -- * Format Detection
   , InputFormat(..)
@@ -45,13 +67,24 @@ module Data.X509.TCG.Util.Paccor
 
 import Control.Applicative ((<|>))
 import Data.Aeson hiding (encodeFile)
+import Data.Aeson.Types (Parser)
+import Data.ASN1.BinaryEncoding (DER(..))
+import Data.ASN1.Encoding (encodeASN1')
+import Data.ASN1.Types
+import Data.Word (Word8)
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Base64 as B64
+import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as BL
 import Data.Maybe (catMaybes, isJust, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Text.Encoding (encodeUtf8)
+import Data.Bits (shiftR, (.&.))
+import Data.X509 (Extensions(..), ExtensionRaw(..), Certificate(..), ExtSubjectKeyId(..), extensionGet, certIssuerDN, certSerial, DistinguishedName(..))
 import qualified Data.Yaml as Yaml
 import GHC.Generics (Generic)
+import Text.Read (readMaybe)
 
 -- Local imports
 import Data.X509.TCG.Util.Config
@@ -370,8 +403,8 @@ paccorToYamlConfig paccor = PlatformCertConfig
   , pccProperties = convertProperties (paccorProperties paccor)  -- Platform properties
   -- URI References
   , pccPlatformConfigUri = Nothing  -- Separate from ComponentsUri
-  , pccComponentsUri = convertPaccorUri (paccorComponentsUri paccor)  -- External components list
-  , pccPropertiesUri = convertPaccorUri (paccorPropertiesUri paccor)  -- External properties list
+  , pccComponentsUri = convertPaccorUriToConfig (paccorComponentsUri paccor)  -- External components list
+  , pccPropertiesUri = convertPaccorUriToConfig (paccorPropertiesUri paccor)  -- External properties list
   -- Extended fields - set defaults
   , pccPlatformClass = Nothing
   , pccSpecificationVersion = Just "1.1"
@@ -408,7 +441,7 @@ paccorToYamlConfig paccor = PlatformCertConfig
       , ccFieldReplaceable = convertFieldReplaceable (componentFieldReplaceable comp)
       , ccAddresses = convertAddresses (componentAddresses comp)
       , ccPlatformCert = convertPlatformCert (componentPlatformCert comp)
-      , ccPlatformCertUri = convertPlatformCertUri (componentPlatformCertUri comp)
+      , ccPlatformCertUri = convertPaccorUriToConfig (componentPlatformCertUri comp)
       , ccStatus = fmap T.unpack (componentStatus comp)  -- Delta status
       }
 
@@ -431,14 +464,6 @@ paccorToYamlConfig paccor = PlatformCertConfig
       { propName = T.unpack (propertyName prop)
       , propValue = T.unpack (propertyValue prop)
       , propStatus = fmap T.unpack (propertyStatus prop)
-      }
-
-    convertPaccorUri :: Maybe PaccorUri -> Maybe URIReferenceConfig
-    convertPaccorUri Nothing = Nothing
-    convertPaccorUri (Just uri) = Just URIReferenceConfig
-      { uriUri = T.unpack (paccorUriValue uri)
-      , uriHashAlgorithm = fmap (oidToHashName . T.unpack) (paccorUriHashAlgorithm uri)
-      , uriHashValue = fmap T.unpack (paccorUriHashValue uri)
       }
 
     convertPlatformCert :: Maybe PaccorPlatformCert -> Maybe ComponentPlatformCertConfig
@@ -466,14 +491,6 @@ paccorToYamlConfig paccor = PlatformCertConfig
     convertIssuerName gn = IssuerNameConfig
       { inOid = T.unpack (gnName gn)
       , inValue = T.unpack (gnValue gn)
-      }
-
-    convertPlatformCertUri :: Maybe PaccorUri -> Maybe URIReferenceConfig
-    convertPlatformCertUri Nothing = Nothing
-    convertPlatformCertUri (Just uri) = Just URIReferenceConfig
-      { uriUri = T.unpack (paccorUriValue uri)
-      , uriHashAlgorithm = fmap (oidToHashName . T.unpack) (paccorUriHashAlgorithm uri)
-      , uriHashValue = fmap T.unpack (paccorUriHashValue uri)
       }
 
     convertAddresses :: Maybe [PaccorAddress] -> Maybe [AddressConfig]
@@ -511,13 +528,6 @@ paccorToYamlConfig paccor = PlatformCertConfig
       | isJust (addrLogicalAddress addr) = Just ()
       | otherwise = Nothing
 
-    -- Convert OID to hash algorithm name
-    oidToHashName :: String -> String
-    oidToHashName "2.16.840.1.101.3.4.2.1" = "sha256"
-    oidToHashName "2.16.840.1.101.3.4.2.2" = "sha384"
-    oidToHashName "2.16.840.1.101.3.4.2.3" = "sha512"
-    oidToHashName oid = oid  -- Return as-is if unknown
-
 -- | Save paccor config as YAML file
 savePaccorAsYaml :: PaccorConfig -> FilePath -> IO ()
 savePaccorAsYaml paccor outputFile = do
@@ -537,3 +547,591 @@ loadAnyConfig file = do
       return $ case result of
         Left err -> Left $ "Failed to parse paccor JSON: " ++ err
         Right paccor -> Right (paccorToYamlConfig paccor)
+
+-- ============================================================================
+-- PolicyReference.json support
+-- ============================================================================
+
+-- | Paccor PolicyReference.json top-level structure
+data PaccorPolicyReference = PaccorPolicyReference
+  { pprPlatformSpec       :: Maybe PaccorPlatformSpec
+  , pprCredentialSpec     :: Maybe PaccorSpecVersion
+  , pprSecurityAssertions :: Maybe PaccorTBBSecurityAssertions
+  , pprPlatformConfigUri  :: Maybe PaccorUri
+  } deriving (Show, Eq, Generic)
+
+-- | TCG Platform Specification (version + platform class)
+data PaccorPlatformSpec = PaccorPlatformSpec
+  { ppsVersion       :: PaccorSpecVersion
+  , ppsPlatformClass :: Text  -- Base64 encoded
+  } deriving (Show, Eq, Generic)
+
+-- | Spec version with major.minor.revision
+data PaccorSpecVersion = PaccorSpecVersion
+  { psvMajor    :: Int
+  , psvMinor    :: Int
+  , psvRevision :: Int
+  } deriving (Show, Eq, Generic)
+
+-- | TBB Security Assertions
+data PaccorTBBSecurityAssertions = PaccorTBBSecurityAssertions
+  { ptbbVersion          :: Maybe Int
+  , ptbbCCInfo           :: Maybe PaccorCCInfo
+  , ptbbFipsLevel        :: Maybe PaccorFipsLevel
+  , ptbbRtmType          :: Maybe Text
+  , ptbbIso9000Certified :: Maybe Bool
+  , ptbbIso9000Uri       :: Maybe Text
+  } deriving (Show, Eq, Generic)
+
+-- | Common Criteria measures
+data PaccorCCInfo = PaccorCCInfo
+  { pccInfoVersion            :: Text        -- "3.1"
+  , pccInfoAssuranceLevel     :: Text        -- "level7"
+  , pccInfoEvalStatus         :: Text        -- "evaluationCompleted"
+  , pccInfoPlus               :: Maybe Bool
+  , pccInfoStrengthOfFunction :: Maybe Text
+  , pccInfoProfileOid         :: Maybe Text
+  , pccInfoProfileUri         :: Maybe PaccorUri
+  , pccInfoTargetOid          :: Maybe Text
+  , pccInfoTargetUri          :: Maybe PaccorUri
+  } deriving (Show, Eq, Generic)
+
+-- | FIPS Level
+data PaccorFipsLevel = PaccorFipsLevel
+  { pflVersion :: Text    -- "140-2"
+  , pflLevel   :: Text    -- "level4"
+  , pflPlus    :: Maybe Bool
+  } deriving (Show, Eq, Generic)
+
+-- JSON parsing helpers
+
+-- | Parse a value that may be a JSON string containing a number or a JSON number
+parseIntOrString :: Value -> Parser Int
+parseIntOrString (Number n) = return (round n)
+parseIntOrString (String s) = case readMaybe (T.unpack s) of
+  Just i  -> return i
+  Nothing -> fail $ "Cannot parse as Int: " ++ T.unpack s
+parseIntOrString v = fail $ "Expected Int or String, got: " ++ show v
+
+-- | Parse a value that may be a JSON bool, string bool, or 0/1
+parseBoolFlexible :: Value -> Parser Bool
+parseBoolFlexible (Bool b) = return b
+parseBoolFlexible (Number n) = return (n /= 0)
+parseBoolFlexible (String s) = case T.toLower s of
+  "true"  -> return True
+  "false" -> return False
+  "1"     -> return True
+  "0"     -> return False
+  _       -> fail $ "Cannot parse as Bool: " ++ T.unpack s
+parseBoolFlexible v = fail $ "Expected Bool or String, got: " ++ show v
+
+-- FromJSON instances for PolicyReference types
+
+instance FromJSON PaccorPolicyReference where
+  parseJSON = withObject "PaccorPolicyReference" $ \v -> PaccorPolicyReference
+    <$> v .:? "TCGPLATFORMSPECIFICATION"
+    <*> v .:? "TCGCREDENTIALSPECIFICATION"
+    <*> v .:? "TBBSECURITYASSERTIONS"
+    <*> v .:? "PLATFORMCONFIGURI"
+
+instance FromJSON PaccorPlatformSpec where
+  parseJSON = withObject "PaccorPlatformSpec" $ \v -> PaccorPlatformSpec
+    <$> v .: "VERSION"
+    <*> v .: "PLATFORMCLASS"
+
+instance FromJSON PaccorSpecVersion where
+  parseJSON = withObject "PaccorSpecVersion" $ \v -> PaccorSpecVersion
+    <$> (v .: "MAJORVERSION" >>= parseIntOrString)
+    <*> (v .: "MINORVERSION" >>= parseIntOrString)
+    <*> (v .: "REVISION" >>= parseIntOrString)
+
+instance FromJSON PaccorTBBSecurityAssertions where
+  parseJSON = withObject "PaccorTBBSecurityAssertions" $ \v -> PaccorTBBSecurityAssertions
+    <$> (do mv <- v .:? "VERSION"
+            case mv of
+              Nothing  -> return Nothing
+              Just val -> Just <$> parseIntOrString val)
+    <*> v .:? "CCINFO"
+    <*> v .:? "FIPSLEVEL"
+    <*> v .:? "RTMTYPE"
+    <*> (do mv <- v .:? "ISO9000CERTIFIED"
+            case mv of
+              Nothing  -> return Nothing
+              Just val -> Just <$> parseBoolFlexible val)
+    <*> v .:? "ISO9000URI"
+
+instance FromJSON PaccorCCInfo where
+  parseJSON = withObject "PaccorCCInfo" $ \v -> PaccorCCInfo
+    <$> v .: "VERSION"
+    <*> v .: "ASSURANCELEVEL"
+    <*> v .: "EVALUATIONSTATUS"
+    <*> (do mv <- v .:? "PLUS"
+            case mv of
+              Nothing  -> return Nothing
+              Just val -> Just <$> parseBoolFlexible val)
+    <*> v .:? "STRENGTHOFFUNCTION"
+    <*> v .:? "PROFILEOID"
+    <*> v .:? "PROFILEURI"
+    <*> v .:? "TARGETOID"
+    <*> v .:? "TARGETURI"
+
+instance FromJSON PaccorFipsLevel where
+  parseJSON = withObject "PaccorFipsLevel" $ \v -> PaccorFipsLevel
+    <$> v .: "VERSION"
+    <*> v .: "LEVEL"
+    <*> (do mv <- v .:? "PLUS"
+            case mv of
+              Nothing  -> return Nothing
+              Just val -> Just <$> parseBoolFlexible val)
+
+-- | Load paccor PolicyReference.json file
+loadPaccorPolicyReference :: FilePath -> IO (Either String PaccorPolicyReference)
+loadPaccorPolicyReference file = do
+  content <- BL.readFile file
+  return $ eitherDecode content
+
+-- | Merge PolicyReference data into an existing PlatformCertConfig
+mergePolicyReference :: PaccorPolicyReference -> PlatformCertConfig -> PlatformCertConfig
+mergePolicyReference pr config = config
+  { pccPlatformSpecMajor    = fmap (psvMajor . ppsVersion) (pprPlatformSpec pr)    <|> pccPlatformSpecMajor config
+  , pccPlatformSpecMinor    = fmap (psvMinor . ppsVersion) (pprPlatformSpec pr)    <|> pccPlatformSpecMinor config
+  , pccPlatformSpecRevision = fmap (psvRevision . ppsVersion) (pprPlatformSpec pr) <|> pccPlatformSpecRevision config
+  , pccPlatformClass        = fmap (base64ToHex . ppsPlatformClass) (pprPlatformSpec pr) <|> pccPlatformClass config
+  , pccCredentialSpecMajor    = fmap psvMajor (pprCredentialSpec pr)    <|> pccCredentialSpecMajor config
+  , pccCredentialSpecMinor    = fmap psvMinor (pprCredentialSpec pr)    <|> pccCredentialSpecMinor config
+  , pccCredentialSpecRevision = fmap psvRevision (pprCredentialSpec pr) <|> pccCredentialSpecRevision config
+  , pccSecurityAssertions = fmap convertTBBToSecurityAssertions (pprSecurityAssertions pr) <|> pccSecurityAssertions config
+  , pccPlatformConfigUri  = convertPaccorUriToConfig (pprPlatformConfigUri pr) <|> pccPlatformConfigUri config
+  }
+
+-- | Decode Base64 text to hex string
+base64ToHex :: Text -> String
+base64ToHex b64 =
+  case B64.decode (encodeUtf8 b64) of
+    Left _err -> T.unpack b64  -- fallback: return as-is
+    Right bs  -> concatMap toHexPair (B.unpack bs)
+  where
+    toHexPair w =
+      let (hi, lo) = w `divMod` 16
+      in [hexChar hi, hexChar lo]
+    hexChar n
+      | n < 10    = toEnum (fromEnum '0' + fromIntegral n)
+      | otherwise = toEnum (fromEnum 'a' + fromIntegral n - 10)
+
+-- | Convert PaccorTBBSecurityAssertions to SecurityAssertionsConfig
+convertTBBToSecurityAssertions :: PaccorTBBSecurityAssertions -> SecurityAssertionsConfig
+convertTBBToSecurityAssertions tbb = SecurityAssertionsConfig
+  { sacVersion             = ptbbVersion tbb
+  , sacCCVersion           = fmap (T.unpack . pccInfoVersion) (ptbbCCInfo tbb)
+  , sacEvalAssuranceLevel  = ptbbCCInfo tbb >>= parseLevelInt . pccInfoAssuranceLevel
+  , sacEvalStatus          = fmap (T.unpack . pccInfoEvalStatus) (ptbbCCInfo tbb)
+  , sacPlus                = ptbbCCInfo tbb >>= pccInfoPlus
+  , sacStrengthOfFunction  = ptbbCCInfo tbb >>= pccInfoStrengthOfFunction >>= Just . T.unpack
+  , sacProtectionProfileOID = ptbbCCInfo tbb >>= fmap T.unpack . pccInfoProfileOid
+  , sacProtectionProfileURI = ptbbCCInfo tbb >>= pccInfoProfileUri >>= \u -> Just (T.unpack (paccorUriValue u))
+  , sacSecurityTargetOID    = ptbbCCInfo tbb >>= fmap T.unpack . pccInfoTargetOid
+  , sacSecurityTargetURI    = ptbbCCInfo tbb >>= pccInfoTargetUri >>= \u -> Just (T.unpack (paccorUriValue u))
+  , sacFIPSVersion         = fmap (T.unpack . pflVersion) (ptbbFipsLevel tbb)
+  , sacFIPSSecurityLevel   = ptbbFipsLevel tbb >>= parseLevelInt . pflLevel
+  , sacFIPSPlus            = ptbbFipsLevel tbb >>= pflPlus
+  , sacRTMType             = fmap (T.unpack . T.toLower) (ptbbRtmType tbb)
+  , sacISO9000Certified    = ptbbIso9000Certified tbb
+  , sacISO9000URI          = fmap T.unpack (ptbbIso9000Uri tbb)
+  }
+
+-- | Parse "level7" -> Just 7, "level4" -> Just 4, etc.
+parseLevelInt :: Text -> Maybe Int
+parseLevelInt t = readMaybe (T.unpack (T.dropWhile (not . isDigitChar) t))
+  where
+    isDigitChar c = c >= '0' && c <= '9'
+
+-- | Convert Maybe PaccorUri to Maybe URIReferenceConfig (module-level reusable)
+convertPaccorUriToConfig :: Maybe PaccorUri -> Maybe URIReferenceConfig
+convertPaccorUriToConfig Nothing = Nothing
+convertPaccorUriToConfig (Just uri) = Just URIReferenceConfig
+  { uriUri = T.unpack (paccorUriValue uri)
+  , uriHashAlgorithm = fmap (oidToHashNameTop . T.unpack) (paccorUriHashAlgorithm uri)
+  , uriHashValue = fmap T.unpack (paccorUriHashValue uri)
+  }
+
+-- | Convert OID to hash algorithm name (module-level)
+oidToHashNameTop :: String -> String
+oidToHashNameTop "2.16.840.1.101.3.4.2.1" = "sha256"
+oidToHashNameTop "2.16.840.1.101.3.4.2.2" = "sha384"
+oidToHashNameTop "2.16.840.1.101.3.4.2.3" = "sha512"
+oidToHashNameTop oid = oid
+
+-- ============================================================================
+-- Extensions.json support
+-- ============================================================================
+
+-- | Paccor Extensions.json top-level structure
+data PaccorExtensions = PaccorExtensions
+  { pextCertPolicies       :: Maybe [PaccorCertPolicy]
+  , pextAuthorityInfoAccess :: Maybe [PaccorAIAEntry]
+  , pextCrlDistribution    :: Maybe PaccorCRLDistPoint
+  } deriving (Show, Eq, Generic)
+
+-- | Certificate Policy entry
+data PaccorCertPolicy = PaccorCertPolicy
+  { pcpOid        :: Text
+  , pcpQualifiers :: [PaccorPolicyQualifier]
+  } deriving (Show, Eq, Generic)
+
+-- | Policy Qualifier (CPS or USERNOTICE)
+data PaccorPolicyQualifier = PaccorPolicyQualifier
+  { ppqId    :: Text    -- "CPS" or "USERNOTICE"
+  , ppqValue :: Text
+  } deriving (Show, Eq, Generic)
+
+-- | Authority Info Access entry
+data PaccorAIAEntry = PaccorAIAEntry
+  { paiaMethod   :: Text     -- "OCSP" or "CAISSUERS"
+  , paiaLocation :: Text
+  } deriving (Show, Eq, Generic)
+
+-- | CRL Distribution Point
+data PaccorCRLDistPoint = PaccorCRLDistPoint
+  { pcrlDistName :: Maybe PaccorDistName
+  , pcrlReason   :: Maybe Int
+  , pcrlIssuer   :: Maybe Text
+  } deriving (Show, Eq, Generic)
+
+-- | Distribution Point Name
+data PaccorDistName = PaccorDistName
+  { pdnType :: Int
+  , pdnName :: Text
+  } deriving (Show, Eq, Generic)
+
+-- FromJSON instances for Extensions types
+
+instance FromJSON PaccorExtensions where
+  parseJSON = withObject "PaccorExtensions" $ \v -> PaccorExtensions
+    <$> v .:? "CERTIFICATEPOLICIES"
+    <*> v .:? "AUTHORITYINFOACCESS"
+    <*> v .:? "CRLDISTRIBUTION"
+
+instance FromJSON PaccorCertPolicy where
+  parseJSON = withObject "PaccorCertPolicy" $ \v -> PaccorCertPolicy
+    <$> v .: "POLICYIDENTIFIER"
+    <*> (v .:? "POLICYQUALIFIERS" >>= maybe (return []) return)
+
+instance FromJSON PaccorPolicyQualifier where
+  parseJSON = withObject "PaccorPolicyQualifier" $ \v -> PaccorPolicyQualifier
+    <$> v .: "POLICYQUALIFIERID"
+    <*> v .: "QUALIFIER"
+
+instance FromJSON PaccorAIAEntry where
+  parseJSON = withObject "PaccorAIAEntry" $ \v -> PaccorAIAEntry
+    <$> v .: "ACCESSMETHOD"
+    <*> v .: "ACCESSLOCATION"
+
+instance FromJSON PaccorCRLDistPoint where
+  parseJSON = withObject "PaccorCRLDistPoint" $ \v -> PaccorCRLDistPoint
+    <$> v .:? "DISTRIBUTIONNAME"
+    <*> (do mv <- v .:? "REASON"
+            case mv of
+              Nothing  -> return Nothing
+              Just val -> Just <$> parseIntOrString val)
+    <*> v .:? "ISSUER"
+
+instance FromJSON PaccorDistName where
+  parseJSON = withObject "PaccorDistName" $ \v -> PaccorDistName
+    <$> (v .: "TYPE" >>= parseIntOrString)
+    <*> v .: "NAME"
+
+-- | Load paccor Extensions.json file
+loadPaccorExtensions :: FilePath -> IO (Either String PaccorExtensions)
+loadPaccorExtensions file = do
+  content <- BL.readFile file
+  return $ eitherDecode content
+
+-- | Convert PaccorExtensions to X.509 Extensions for certificate generation.
+-- Encodes CertificatePolicies, AuthorityInfoAccess, and CRLDistributionPoints
+-- as DER-encoded ExtensionRaw values per RFC 5280.
+paccorExtensionsToX509 :: PaccorExtensions -> Extensions
+paccorExtensionsToX509 pext =
+  let exts = catMaybes
+        [ encodeCertPolicies <$> pextCertPolicies pext
+        , encodeAIA <$> pextAuthorityInfoAccess pext
+        , encodeCRLDistPoints <$> pextCrlDistribution pext
+        ]
+  in if null exts
+     then Extensions Nothing
+     else Extensions (Just exts)
+
+-- | Encode CertificatePolicies extension (OID 2.5.29.32, non-critical)
+-- ASN.1: SEQUENCE OF PolicyInformation
+--   PolicyInformation ::= SEQUENCE { policyIdentifier OID, policyQualifiers SEQUENCE OF PolicyQualifierInfo OPTIONAL }
+--   PolicyQualifierInfo ::= SEQUENCE { policyQualifierId OID, qualifier ANY }
+encodeCertPolicies :: [PaccorCertPolicy] -> ExtensionRaw
+encodeCertPolicies policies =
+  let asn1 = [Start Sequence] ++ concatMap encodePolicyInfo policies ++ [End Sequence]
+      raw = encodeASN1' DER asn1
+  in ExtensionRaw [2, 5, 29, 32] False raw
+
+encodePolicyInfo :: PaccorCertPolicy -> [ASN1]
+encodePolicyInfo policy =
+  let oid = parseOidText (pcpOid policy)
+      qualifiers = pcpQualifiers policy
+  in [Start Sequence, OID oid]
+     ++ (if null qualifiers then []
+         else [Start Sequence] ++ concatMap encodePolicyQualifier qualifiers ++ [End Sequence])
+     ++ [End Sequence]
+
+encodePolicyQualifier :: PaccorPolicyQualifier -> [ASN1]
+encodePolicyQualifier pq =
+  let qualOid = case T.toUpper (ppqId pq) of
+        "CPS"        -> [1, 3, 6, 1, 5, 5, 7, 2, 1]  -- id-qt-cps
+        "USERNOTICE" -> [1, 3, 6, 1, 5, 5, 7, 2, 2]  -- id-qt-unotice
+        _            -> [1, 3, 6, 1, 5, 5, 7, 2, 1]  -- default to CPS
+      qualValue = case T.toUpper (ppqId pq) of
+        "CPS" -> [ASN1String (asn1CharacterString IA5 (T.unpack (ppqValue pq)))]
+        "USERNOTICE" ->
+          -- UserNotice ::= SEQUENCE { explicitText DisplayText OPTIONAL }
+          -- DisplayText ::= CHOICE { utf8String UTF8String }
+          [ Start Sequence
+          , ASN1String (asn1CharacterString UTF8 (T.unpack (ppqValue pq)))
+          , End Sequence
+          ]
+        _ -> [ASN1String (asn1CharacterString IA5 (T.unpack (ppqValue pq)))]
+  in [Start Sequence, OID qualOid] ++ qualValue ++ [End Sequence]
+
+-- | Encode AuthorityInfoAccess extension (OID 1.3.6.1.5.5.7.1.1, non-critical)
+-- ASN.1: SEQUENCE OF AccessDescription
+--   AccessDescription ::= SEQUENCE { accessMethod OID, accessLocation GeneralName }
+--   GeneralName uniformResourceIdentifier [6] IA5String
+encodeAIA :: [PaccorAIAEntry] -> ExtensionRaw
+encodeAIA entries =
+  let asn1 = [Start Sequence] ++ concatMap encodeAIAEntry entries ++ [End Sequence]
+      raw = encodeASN1' DER asn1
+  in ExtensionRaw [1, 3, 6, 1, 5, 5, 7, 1, 1] False raw
+
+encodeAIAEntry :: PaccorAIAEntry -> [ASN1]
+encodeAIAEntry entry =
+  let methodOid = case T.toUpper (paiaMethod entry) of
+        "OCSP"      -> [1, 3, 6, 1, 5, 5, 7, 48, 1]  -- id-ad-ocsp
+        "CAISSUERS" -> [1, 3, 6, 1, 5, 5, 7, 48, 2]  -- id-ad-caIssuers
+        _           -> [1, 3, 6, 1, 5, 5, 7, 48, 1]  -- default to OCSP
+      -- GeneralName uniformResourceIdentifier is context tag [6] implicit
+      uriBytes = encodeUtf8 (paiaLocation entry)
+  in [ Start Sequence
+     , OID methodOid
+     , Other Context 6 uriBytes  -- uniformResourceIdentifier [6]
+     , End Sequence
+     ]
+
+-- | Encode CRLDistributionPoints extension (OID 2.5.29.31, non-critical)
+-- ASN.1: SEQUENCE OF DistributionPoint
+--   DistributionPoint ::= SEQUENCE {
+--     distributionPoint [0] DistributionPointName OPTIONAL,
+--     reasons           [1] ReasonFlags OPTIONAL,
+--     cRLIssuer         [2] GeneralNames OPTIONAL }
+--   DistributionPointName ::= CHOICE {
+--     fullName [0] GeneralNames }
+--   ReasonFlags ::= BIT STRING
+encodeCRLDistPoints :: PaccorCRLDistPoint -> ExtensionRaw
+encodeCRLDistPoints dp =
+  let dpContent = catMaybes
+        [ encodeDistPointName <$> pcrlDistName dp
+        , encodeReasonFlags <$> pcrlReason dp
+        , encodeIssuerName <$> pcrlIssuer dp
+        ]
+      asn1 = [Start Sequence, Start Sequence]
+             ++ concat dpContent
+             ++ [End Sequence, End Sequence]
+      raw = encodeASN1' DER asn1
+  in ExtensionRaw [2, 5, 29, 31] False raw
+
+-- | Encode DistributionPointName as [0] EXPLICIT { fullName [0] IMPLICIT GeneralNames }
+-- Per RFC 5280: distributionPoint [0] is EXPLICIT (wrapping CHOICE),
+-- fullName [0] is IMPLICIT (replacing SEQUENCE OF GeneralName)
+encodeDistPointName :: PaccorDistName -> [ASN1]
+encodeDistPointName dn =
+  let uriBytes = encodeUtf8 (pdnName dn)
+  in case pdnType dn of
+       0 -> -- fullName: distributionPoint [0] { fullName [0] { GeneralName } }
+         [ Start (Container Context 0)    -- distributionPoint [0] EXPLICIT
+         , Start (Container Context 0)    -- fullName [0] IMPLICIT SEQUENCE OF GeneralName
+         , Other Context 6 uriBytes       -- uniformResourceIdentifier [6]
+         , End (Container Context 0)      -- end fullName
+         , End (Container Context 0)      -- end distributionPoint
+         ]
+       _ -> -- relativeName or unknown: encode as fullName
+         [ Start (Container Context 0)
+         , Start (Container Context 0)
+         , Other Context 6 uriBytes
+         , End (Container Context 0)
+         , End (Container Context 0)
+         ]
+
+-- | Encode ReasonFlags as BIT STRING wrapped in [1] context tag.
+-- DER requires minimal encoding: strip trailing zero bytes and compute unused bits.
+encodeReasonFlags :: Int -> [ASN1]
+encodeReasonFlags reason =
+  let reasonByte = fromIntegral reason :: Word8
+      -- Count trailing zero bits for minimal DER BIT STRING
+      unusedBits = if reasonByte == 0 then 8 else trailingZeroBits reasonByte 0
+  in [Other Context 1 (B.pack [fromIntegral unusedBits, reasonByte])]
+  where
+    trailingZeroBits :: Word8 -> Int -> Int
+    trailingZeroBits b n
+      | b .&. 1 == 0 = trailingZeroBits (b `shiftR` 1) (n + 1)
+      | otherwise     = n
+
+-- | Encode CRL issuer as GeneralNames wrapped in [2] context tag.
+-- Per IWG convention, crlIssuer uses directoryName (not URI).
+-- Input: DN string like "C=US, ST=TX, L=City, O=Org, CN=www.example.com"
+encodeIssuerName :: Text -> [ASN1]
+encodeIssuerName issuer =
+  let dnRdns = textToDnRdns issuer
+  in [ Start (Container Context 2)    -- cRLIssuer [2] GeneralNames
+     , Start (Container Context 4)    -- directoryName [4]
+     , Start Sequence                 -- Name = SEQUENCE OF RDN
+     ] ++ dnRdns ++
+     [ End Sequence
+     , End (Container Context 4)
+     , End (Container Context 2)
+     ]
+
+-- | Parse a DN string like "C=US, ST=TX, L=City, O=Org, CN=www.example.com"
+-- into ASN1 RDN encoding (SET { SEQUENCE { OID, value } } for each component)
+textToDnRdns :: Text -> [ASN1]
+textToDnRdns t =
+  let parts = map T.strip (T.splitOn "," t)
+  in concatMap parseDnComponent parts
+  where
+    parseDnComponent :: Text -> [ASN1]
+    parseDnComponent comp =
+      case T.breakOn "=" comp of
+        (key, rest) | not (T.null rest) ->
+          let val = T.drop 1 rest  -- drop the '='
+              strippedKey = T.strip key
+              mOid = dnAttrOid strippedKey
+              -- RFC 5280: countryName MUST use PrintableString
+              strType = if strippedKey == "C" then Printable else UTF8
+          in case mOid of
+               Just oid ->
+                 [ Start Set, Start Sequence
+                 , OID oid
+                 , ASN1String (ASN1CharacterString strType (encodeUtf8 val))
+                 , End Sequence, End Set
+                 ]
+               Nothing -> []  -- skip unknown attributes
+        _ -> []  -- skip malformed components
+
+    dnAttrOid :: Text -> Maybe OID
+    dnAttrOid "CN"  = Just [2,5,4,3]
+    dnAttrOid "C"   = Just [2,5,4,6]
+    dnAttrOid "L"   = Just [2,5,4,7]
+    dnAttrOid "ST"  = Just [2,5,4,8]
+    dnAttrOid "O"   = Just [2,5,4,10]
+    dnAttrOid "OU"  = Just [2,5,4,11]
+    dnAttrOid "SN"  = Just [2,5,4,4]
+    dnAttrOid "GN"  = Just [2,5,4,42]
+    dnAttrOid _     = Nothing
+
+-- | Parse a dotted OID string like "1.2.840.113741.1.5.2.4" into OID
+parseOidText :: Text -> OID
+parseOidText t =
+  let parts = T.splitOn "." t
+  in mapMaybe (readMaybe . T.unpack) parts
+
+-- ============================================================================
+-- Subject Alternative Names (SAN) extension generation
+-- ============================================================================
+
+-- | Build SubjectAltName extension from PlatformCertConfig.
+-- Per IWG Profile §3.2.8, SAN MUST contain a directoryName with
+-- platformManufacturerStr, platformModel, and platformVersion attributes.
+-- OID 2.5.29.17, non-critical.
+buildSanExtension :: PlatformCertConfig -> ExtensionRaw
+buildSanExtension config =
+  let -- Required attributes
+      mfgAttr  = mkRdn [2, 23, 133, 5, 1, 1] (BC.pack $ pccManufacturer config)  -- tcg-paa-platformManufacturerStr
+      modelAttr = mkRdn [2, 23, 133, 5, 1, 4] (BC.pack $ pccModel config)         -- tcg-paa-platformModel
+      verAttr  = mkRdn [2, 23, 133, 5, 1, 5] (BC.pack $ pccVersion config)        -- tcg-paa-platformVersion
+      -- Optional attributes
+      serialAttr = mkRdn [2, 23, 133, 5, 1, 6] (BC.pack $ pccSerial config)       -- tcg-paa-platformSerial
+      -- ManufacturerId ::= SEQUENCE { manufacturerIdentifier PrivateEnterpriseNumber }
+      -- PrivateEnterpriseNumber ::= OBJECT IDENTIFIER  (Errata 9)
+      mfgIdAttr = case pccManufacturerId config of
+        Just mid -> mkRdnManufacturerId [2, 23, 133, 5, 1, 2] (parseOidText (T.pack mid))
+        Nothing  -> []
+      -- DirectoryName encoding
+      dn = [Start Sequence] ++ mfgAttr ++ modelAttr ++ verAttr ++ serialAttr ++ mfgIdAttr ++ [End Sequence]
+      generalNames =
+        [ Start Sequence
+        , Start (Container Context 4)  -- directoryName [4]
+        ] ++ dn ++
+        [ End (Container Context 4)
+        , End Sequence
+        ]
+      raw = encodeASN1' DER generalNames
+  in ExtensionRaw [2, 5, 29, 17] False raw
+
+-- | Create an RDN SET { SEQUENCE { OID, UTF8String } } for SAN directoryName
+mkRdn :: OID -> B.ByteString -> [ASN1]
+mkRdn oid val =
+  [ Start Set
+  , Start Sequence
+  , OID oid
+  , ASN1String (ASN1CharacterString UTF8 val)
+  , End Sequence
+  , End Set
+  ]
+
+-- | Create an RDN for ManufacturerId per IWG §3.1.6 + Errata 9:
+-- SET { SEQUENCE { OID(2.23.133.5.1.2), SEQUENCE { OID(pen) } } }
+-- ManufacturerId ::= SEQUENCE { manufacturerIdentifier PrivateEnterpriseNumber }
+-- PrivateEnterpriseNumber ::= OBJECT IDENTIFIER
+mkRdnManufacturerId :: OID -> OID -> [ASN1]
+mkRdnManufacturerId attrOid penOid =
+  [ Start Set
+  , Start Sequence
+  , OID attrOid
+  , Start Sequence
+  , OID penOid
+  , End Sequence
+  , End Sequence
+  , End Set
+  ]
+
+-- | Build Authority Key Identifier extension from CA certificate per CHN-001.
+-- Includes keyIdentifier [0], authorityCertIssuer [1], and authorityCertSerialNumber [2].
+-- Returns Nothing if the CA cert has no SKI extension.
+buildAkiExtension :: Certificate -> Maybe ExtensionRaw
+buildAkiExtension cert =
+  let mSki = extensionGet (certExtensions cert) :: Maybe ExtSubjectKeyId
+      issuerDN = certIssuerDN cert
+      serialNum = certSerial cert
+  in case mSki of
+       Just (ExtSubjectKeyId ski) ->
+         let dnAsn1 = toASN1 issuerDN []
+             asn1 = [ Start Sequence
+                    , Other Context 0 ski                     -- keyIdentifier [0]
+                    , Start (Container Context 1)             -- authorityCertIssuer [1] GeneralNames
+                    , Start (Container Context 4)             -- directoryName [4]
+                    ] ++ dnAsn1 ++
+                    [ End (Container Context 4)
+                    , End (Container Context 1)
+                    , Other Context 2 (integerToBytes serialNum)  -- authorityCertSerialNumber [2]
+                    , End Sequence
+                    ]
+             raw = encodeASN1' DER asn1
+         in Just $ ExtensionRaw [2, 5, 29, 35] False raw
+       Nothing -> Nothing
+
+-- | Encode an Integer as DER INTEGER content bytes (big-endian two's complement)
+integerToBytes :: Integer -> B.ByteString
+integerToBytes 0 = B.singleton 0
+integerToBytes n
+  | n > 0     = let bs = unrollPositive n
+                in if B.head bs >= 128 then B.cons 0 bs else bs
+  | otherwise = B.singleton 0  -- negative serials shouldn't occur
+  where
+    unrollPositive :: Integer -> B.ByteString
+    unrollPositive i = B.pack (go i [])
+      where
+        go 0 acc = acc
+        go x acc = go (x `shiftR` 8) (fromIntegral (x .&. 0xff) : acc)

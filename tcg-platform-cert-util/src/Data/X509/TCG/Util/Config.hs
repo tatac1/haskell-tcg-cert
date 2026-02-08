@@ -36,15 +36,21 @@ module Data.X509.TCG.Util.Config
   , createDefaultTPMInfo
   , yamlComponentToComponentIdentifier
   , configToExtendedAttrs
+  , deltaConfigToExtendedAttrs
   ) where
 
+import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Base64 as B64
-import Data.Maybe (fromMaybe)
+import Data.ASN1.Types
+import Data.ASN1.Types.String ()
+import Data.Char (toUpper)
+import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
 import Data.X509.TCG
 import Data.Aeson (Options(..), defaultOptions, genericParseJSON, genericToJSON)
 import Data.Yaml (FromJSON (..), ToJSON (..), decodeFileEither, encodeFile)
 import GHC.Generics (Generic)
+import Text.Read (readMaybe)
 
 -- | Custom JSON options to strip field prefixes
 -- This allows YAML files to use simpler field names like "manufacturer" instead of "pccManufacturer"
@@ -530,6 +536,13 @@ configToExtendedAttrs config =
     , etaComponentsV2 = case pccComponents config of
         [] -> Nothing
         comps -> Just (map convertComponentToV2 comps)
+    , etaCredentialTypeOid = Nothing
+    , etaHolderBaseCertificateID = Nothing
+    , etaExtensions = Nothing
+    , etaIssuerDN = Nothing
+    , etaSerialNumber = Nothing
+    , etaNotBefore = Nothing
+    , etaNotAfter = Nothing
     }
   where
     -- Convert URIReferenceConfig to PlatformConfigUri
@@ -553,6 +566,15 @@ configToExtendedAttrs config =
       , ccv2Model = BC.pack (ccModel comp)
       , ccv2Serial = fmap BC.pack (ccSerial comp)
       , ccv2Revision = fmap BC.pack (ccRevision comp)
+      , ccv2ManufacturerId = fmap parseOidString (ccManufacturerId comp)
+      , ccv2FieldReplaceable = ccFieldReplaceable comp
+      , ccv2Addresses = case ccAddresses comp of
+          Just addrs -> let pairs = concatMap addressConfigToPairs addrs
+                        in if null pairs then Nothing else Just pairs
+          Nothing -> Nothing
+      , ccv2PlatformCert = fmap encodeComponentPlatformCert (ccPlatformCert comp)
+      , ccv2PlatformCertUri = fmap encodeComponentCertUri (ccPlatformCertUri comp)
+      , ccv2Status = Nothing
       }
 
     -- Parse hex class string to ByteString (e.g., "00000001" -> "\x00\x00\x00\x01")
@@ -573,9 +595,9 @@ configToExtendedAttrs config =
       , tbbEvalStatus = fmap parseEvalStatus (sacEvalStatus sac)
       , tbbPlus = sacPlus sac
       , tbbStrengthOfFunction = fmap parseStrengthOfFunction (sacStrengthOfFunction sac)
-      , tbbProtectionProfileOID = fmap BC.pack (sacProtectionProfileOID sac)
+      , tbbProtectionProfileOID = fmap (oidToContentBytes . parseOidString) (sacProtectionProfileOID sac)
       , tbbProtectionProfileURI = fmap BC.pack (sacProtectionProfileURI sac)
-      , tbbSecurityTargetOID = fmap BC.pack (sacSecurityTargetOID sac)
+      , tbbSecurityTargetOID = fmap (oidToContentBytes . parseOidString) (sacSecurityTargetOID sac)
       , tbbSecurityTargetURI = fmap BC.pack (sacSecurityTargetURI sac)
       , tbbFIPSVersion = fmap BC.pack (sacFIPSVersion sac)
       , tbbFIPSSecurityLevel = sacFIPSSecurityLevel sac
@@ -585,12 +607,14 @@ configToExtendedAttrs config =
       , tbbISO9000URI = fmap BC.pack (sacISO9000URI sac)
       }
 
-    -- Parse evaluation status string to integer
+    -- Parse evaluation status string to integer per ASN.1:
+    -- designedToMeet(0), evaluationInProgress(1), evaluationCompleted(2)
     parseEvalStatus :: String -> Int
-    parseEvalStatus "evaluationInProgress" = 0
-    parseEvalStatus "evaluationCompleted" = 1
-    parseEvalStatus "evaluationWithdrawn" = 2
-    parseEvalStatus _ = 1 -- default to completed
+    parseEvalStatus "designedToMeet" = 0
+    parseEvalStatus "evaluationInProgress" = 1
+    parseEvalStatus "evaluationCompleted" = 2
+    parseEvalStatus "evaluationWithdrawn" = 3
+    parseEvalStatus _ = 2 -- default to completed
 
     -- Parse strength of function string to integer
     parseStrengthOfFunction :: String -> Int
@@ -605,6 +629,8 @@ configToExtendedAttrs config =
     parseRTMType "dynamic" = 1
     parseRTMType "nonHosted" = 2
     parseRTMType "hybrid" = 3
+    parseRTMType "physical" = 4
+    parseRTMType "virtual" = 5
     parseRTMType _ = 0 -- default to static
 
     groupsOf :: Int -> [a] -> [[a]]
@@ -614,3 +640,179 @@ configToExtendedAttrs config =
     buildVersion :: Maybe Int -> Maybe Int -> Maybe Int -> Maybe (Int, Int, Int)
     buildVersion (Just maj) (Just minor) (Just rev) = Just (maj, minor, rev)
     buildVersion _ _ _ = Nothing
+
+    -- Parse dotted OID string "1.2.3.4" to OID [Integer]
+    parseOidString :: String -> OID
+    parseOidString s = mapMaybe readMaybe (splitOn '.' s)
+
+    splitOn :: Char -> String -> [String]
+    splitOn _ [] = []
+    splitOn c s = let (w, rest) = break (== c) s
+                  in w : case rest of
+                           [] -> []
+                           (_:xs) -> splitOn c xs
+
+    -- Convert AddressConfig fields to (OID, ByteString) pairs
+    -- addressValue is UTF8String per ASN.1 spec, so keep hex string as-is
+    addressConfigToPairs :: AddressConfig -> [(OID, B.ByteString)]
+    addressConfigToPairs addr = catMaybes
+      [ fmap (\m -> ([2,23,133,17,1], BC.pack m)) (addrEthernetMac addr)
+      , fmap (\m -> ([2,23,133,17,2], BC.pack m)) (addrWlanMac addr)
+      , fmap (\m -> ([2,23,133,17,3], BC.pack m)) (addrBluetoothMac addr)
+      , fmap (\m -> ([2,23,133,17,4], BC.pack m)) (addrPciAddress addr)
+      , fmap (\m -> ([2,23,133,17,5], BC.pack m)) (addrUsbAddress addr)
+      , fmap (\m -> ([2,23,133,17,6], BC.pack m)) (addrSataAddress addr)
+      , fmap (\m -> ([2,23,133,17,7], BC.pack m)) (addrWwnAddress addr)
+      , fmap (\m -> ([2,23,133,17,8], BC.pack m)) (addrNvmeAddress addr)
+      , fmap (\m -> ([2,23,133,17,9], BC.pack m)) (addrLogicalAddress addr)
+      ]
+
+    -- Encode ComponentPlatformCertConfig to ASN1 list for [5] CertificateIdentifier
+    encodeComponentPlatformCert :: ComponentPlatformCertConfig -> [ASN1]
+    encodeComponentPlatformCert cpc =
+      let attrCertId = case cpcAttributeCertId cpc of
+            Just acid ->
+              let hashAlgOid = parseOidString (acidHashAlgorithm acid)
+                  hashBytes = case B64.decode (BC.pack (acidHashValue acid)) of
+                    Right decoded -> decoded
+                    Left _ -> BC.pack (acidHashValue acid) -- fallback to raw
+              in [ Start (Container Context 0)    -- [0] AttributeCertIdentifier
+                 , Start Sequence, OID hashAlgOid, End Sequence  -- AlgorithmIdentifier
+                 , OctetString hashBytes           -- hashOverSignatureValue
+                 , End (Container Context 0)
+                 ]
+            Nothing -> []
+          genericCertId = case cpcGenericCertId cpc of
+            Just gcid ->
+              let -- Build DN from IssuerNameConfig list: each has oid + value
+                  dnRdns = concatMap issuerNameToRdn (gcidIssuer gcid)
+                  serialNum = case readMaybe (gcidSerial gcid) :: Maybe Integer of
+                    Just n -> n
+                    Nothing -> 0
+              in [ Start (Container Context 1)    -- [1] IssuerSerial
+                 , Start Sequence                 -- GeneralNames
+                 , Start (Container Context 4)    -- directoryName [4]
+                 , Start Sequence                 -- RDNSequence
+                 ] ++ dnRdns ++
+                 [ End Sequence                   -- end RDNSequence
+                 , End (Container Context 4)
+                 , End Sequence                   -- end GeneralNames
+                 , IntVal serialNum               -- CertificateSerialNumber
+                 , End (Container Context 1)
+                 ]
+            Nothing -> []
+      in attrCertId ++ genericCertId
+
+    -- Convert IssuerNameConfig to ASN1 RDN (SET { SEQUENCE { OID, value } })
+    -- RFC 5280: countryName (2.5.4.6) MUST use PrintableString
+    issuerNameToRdn :: IssuerNameConfig -> [ASN1]
+    issuerNameToRdn inc =
+      let oid = parseOidString (inOid inc)
+          strType = if oid == [2,5,4,6] then Printable else UTF8
+      in [ Start Set
+         , Start Sequence
+         , OID oid
+         , ASN1String (ASN1CharacterString strType (BC.pack (inValue inc)))
+         , End Sequence
+         , End Set
+         ]
+
+    -- Encode URIReferenceConfig to ASN1 list for [6] URIReference
+    encodeComponentCertUri :: URIReferenceConfig -> [ASN1]
+    encodeComponentCertUri cfg =
+      [ASN1String (ASN1CharacterString IA5 (BC.pack (uriUri cfg)))]
+
+-- | Convert DeltaCertConfig to ExtendedTCGAttributes.
+-- Delta generation requires component status and Delta credential type.
+deltaConfigToExtendedAttrs :: DeltaCertConfig -> Either String ExtendedTCGAttributes
+deltaConfigToExtendedAttrs config = do
+  comps <- mapM convertDeltaComponentToV2 (dccComponents config)
+  return ExtendedTCGAttributes
+    { etaPlatformConfigUri = fmap convertUriConfig (dccPlatformConfigUri config)
+    , etaPlatformClass = fmap parseHexClass (dccPlatformClass config)
+    , etaCredentialSpecVersion = Nothing
+    , etaPlatformSpecVersion = Nothing
+    , etaSecurityAssertions = Nothing
+    , etaComponentsV2 = Just comps
+    , etaCredentialTypeOid = Just tcg_kp_DeltaAttributeCertificate
+    , etaHolderBaseCertificateID = Nothing
+    , etaExtensions = Nothing
+    , etaIssuerDN = Nothing
+    , etaSerialNumber = Nothing
+    , etaNotBefore = Nothing
+    , etaNotAfter = Nothing
+    }
+  where
+    convertUriConfig :: URIReferenceConfig -> PlatformConfigUri
+    convertUriConfig uriCfg = PlatformConfigUri
+      { pcUri = BC.pack (uriUri uriCfg)
+      , pcHashAlgorithm = fmap BC.pack (uriHashAlgorithm uriCfg)
+      , pcHashValue = case uriHashValue uriCfg of
+          Just b64Str -> case B64.decode (BC.pack b64Str) of
+            Right decoded -> Just decoded
+            Left _ -> Nothing
+          Nothing -> Nothing
+      }
+
+    convertDeltaComponentToV2 :: ComponentConfig -> Either String ComponentConfigV2
+    convertDeltaComponentToV2 comp = do
+      status <- parseComponentStatus (ccStatus comp) (ccManufacturer comp) (ccModel comp)
+      return ComponentConfigV2
+        { ccv2Class = parseHexClass (ccClass comp)
+        , ccv2Manufacturer = BC.pack (ccManufacturer comp)
+        , ccv2Model = BC.pack (ccModel comp)
+        , ccv2Serial = fmap BC.pack (ccSerial comp)
+        , ccv2Revision = fmap BC.pack (ccRevision comp)
+        , ccv2ManufacturerId = fmap parseOidString' (ccManufacturerId comp)
+        , ccv2FieldReplaceable = ccFieldReplaceable comp
+        , ccv2Addresses = case ccAddresses comp of
+            Just addrs -> let pairs = concatMap addressConfigToPairs' addrs
+                          in if null pairs then Nothing else Just pairs
+            Nothing -> Nothing
+        , ccv2PlatformCert = Nothing  -- Delta certs typically don't have platformCert refs
+        , ccv2PlatformCertUri = Nothing
+        , ccv2Status = Just status
+        }
+
+    parseComponentStatus :: Maybe String -> String -> String -> Either String ComponentStatus
+    parseComponentStatus Nothing mfg mdl =
+      Left $ "Delta component status is required for " ++ mfg ++ " / " ++ mdl
+    parseComponentStatus (Just rawStatus) _ _ =
+      case map toUpper rawStatus of
+        "ADDED" -> Right ComponentAdded
+        "MODIFIED" -> Right ComponentModified
+        "REMOVED" -> Right ComponentRemoved
+        other -> Left $ "Unsupported delta component status: " ++ other ++ " (expected ADDED|MODIFIED|REMOVED)"
+
+    parseHexClass :: String -> BC.ByteString
+    parseHexClass hexStr =
+      let hexBytes = groupsOf 2 hexStr
+          bytes = map (read . ("0x" ++)) hexBytes :: [Int]
+      in BC.pack $ map (toEnum :: Int -> Char) bytes
+
+    groupsOf :: Int -> [a] -> [[a]]
+    groupsOf _ [] = []
+    groupsOf n xs = take n xs : groupsOf n (drop n xs)
+
+    parseOidString' :: String -> OID
+    parseOidString' s = mapMaybe readMaybe (splitOn' '.' s)
+
+    splitOn' :: Char -> String -> [String]
+    splitOn' _ [] = []
+    splitOn' c s = let (w, rest) = break (== c) s
+                   in w : case rest of
+                            [] -> []
+                            (_:xs) -> splitOn' c xs
+
+    addressConfigToPairs' :: AddressConfig -> [(OID, B.ByteString)]
+    addressConfigToPairs' addr = catMaybes
+      [ fmap (\m -> ([2,23,133,17,1], BC.pack m)) (addrEthernetMac addr)
+      , fmap (\m -> ([2,23,133,17,2], BC.pack m)) (addrWlanMac addr)
+      , fmap (\m -> ([2,23,133,17,3], BC.pack m)) (addrBluetoothMac addr)
+      , fmap (\m -> ([2,23,133,17,4], BC.pack m)) (addrPciAddress addr)
+      , fmap (\m -> ([2,23,133,17,5], BC.pack m)) (addrUsbAddress addr)
+      , fmap (\m -> ([2,23,133,17,6], BC.pack m)) (addrSataAddress addr)
+      , fmap (\m -> ([2,23,133,17,7], BC.pack m)) (addrWwnAddress addr)
+      , fmap (\m -> ([2,23,133,17,8], BC.pack m)) (addrNvmeAddress addr)
+      , fmap (\m -> ([2,23,133,17,9], BC.pack m)) (addrLogicalAddress addr)
+      ]

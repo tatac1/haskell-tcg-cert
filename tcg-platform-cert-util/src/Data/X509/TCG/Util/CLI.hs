@@ -48,19 +48,22 @@ module Data.X509.TCG.Util.CLI
   )
 where
 
-import Control.Monad (forM_, unless, when)
-import Control.Exception (finally)
+import Control.Monad (forM_, when)
 import Data.Aeson (Value(..), encode, object, (.=))
 import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as LBS
+import Data.Hourglass (Date (..), DateTime (..), TimeOfDay (..))
+import qualified Data.Hourglass as HG
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
+import Text.Read (readMaybe)
 import qualified Data.Text as T
 import Data.PEM (PEM (..), pemContent, pemParseBS, pemWriteBS)
 import Data.Time.Clock (getCurrentTime)
-import Data.X509 (decodeSignedCertificate, getCertificate)
+import Data.X509 (AltName(..), DistinguishedName, Extensions(..), decodeSignedCertificate, getCertificate)
+import Data.X509.AttCert (AttCertIssuer(..), IssuerSerial(IssuerSerial), V2Form(..))
 import Data.X509.TCG
 import Data.X509.TCG.Compliance
 -- Local imports
@@ -75,11 +78,9 @@ import Data.X509.TCG.Util.Paccor
 import qualified Data.X509.TCG.Util.HardwareCollector as HC
 import qualified Data.Yaml as Yaml
 import System.Console.GetOpt
-import System.Directory (doesFileExist, removeFile)
-import System.Environment (lookupEnv)
+import System.Directory (doesFileExist)
 import System.Exit
 import System.FilePath (takeDirectory, (</>))
-import System.Process (readProcessWithExitCode)
 
 -- | Command line options
 data TCGOpts
@@ -114,15 +115,11 @@ data TCGOpts
   | JsonOutput
   | ChainMode
   | Detect
-  | UsePaccorSigner
-  | PaccorExtensionsFile String
-  | PaccorPolicyFile String
-  | PaccorSignerPath String
-  | PaccorValidatorPath String
-  | PaccorCertSerial String
-  | PaccorNotBefore String
-  | PaccorNotAfter String
-  | PaccorHolderFile String
+  | ExtensionsFile String
+  | PolicyRefFile String
+  | CertSerialNumber String
+  | NotBefore String
+  | NotAfter String
   deriving (Show, Eq)
 
 -- | Generate a new platform certificate
@@ -134,11 +131,6 @@ doGenerate opts _ = do
 
   let jsonMode' = JsonOutput `elem` opts
   when (not jsonMode') $ putStrLn "Generating platform certificate..."
-
-  -- paccor signer path: use paccor config files directly (ComponentList/Extensions/PolicyReference)
-  when (UsePaccorSigner `elem` opts) $ do
-    doGenerateWithPaccorSigner opts
-    exitSuccess
 
   -- Check for config file option first
   let configFile = extractOpt "config" (\case ConfigFile f -> Just f; _ -> Nothing) opts ""
@@ -163,11 +155,63 @@ doGenerate opts _ = do
           Left err -> do
             putStrLn $ "Error loading config file: " ++ err
             exitFailure
-          Right config -> do
+          Right config0 -> do
+            -- Auto-detect and merge PolicyReference.json if available
+            let configDir = takeDirectory configFile
+                policyFileOpt = extractOpt "policy-ref" (\case PolicyRefFile f -> Just f; _ -> Nothing) opts ""
+                extFileOpt = extractOpt "extensions" (\case ExtensionsFile f -> Just f; _ -> Nothing) opts ""
+                policyFile = if null policyFileOpt then configDir </> "PolicyReference.json" else policyFileOpt
+                extFile = if null extFileOpt then configDir </> "Extensions.json" else extFileOpt
+
+            -- Merge PolicyReference if the file exists
+            policyExists <- doesFileExist policyFile
+            config <- if policyExists
+              then do
+                prResult <- loadPaccorPolicyReference policyFile
+                case prResult of
+                  Left err -> do
+                    when (not jsonMode') $ putStrLn $ "  Warning: Could not parse PolicyReference: " ++ err
+                    return config0
+                  Right pr -> do
+                    when (not jsonMode') $ putStrLn $ "  Merged PolicyReference from: " ++ policyFile
+                    return $ mergePolicyReference pr config0
+              else return config0
+
+            -- Load Extensions if the file exists
+            extExists <- doesFileExist extFile
+            mExtensions <- if extExists
+              then do
+                extResult <- loadPaccorExtensions extFile
+                case extResult of
+                  Left err -> do
+                    when (not jsonMode') $ putStrLn $ "  Warning: Could not parse Extensions: " ++ err
+                    return Nothing
+                  Right ext -> do
+                    when (not jsonMode') $ putStrLn $ "  Loaded Extensions from: " ++ extFile
+                    return $ Just (paccorExtensionsToX509 ext)
+              else return Nothing
+
             let keySize = show $ fromMaybe 2048 (pccKeySize config)
                 validityDays = show $ fromMaybe 365 (pccValidityDays config)
-                -- Extract extended TCG attributes from config
-                extAttrs = configToExtendedAttrs config
+                -- Extract extended TCG attributes from config, with extensions
+                extAttrs0 = configToExtendedAttrs config
+                -- Build SAN extension from platform config attributes
+                sanExt = buildSanExtension config
+                -- Combine SAN with any paccor-loaded extensions
+                baseExts = case mExtensions of
+                  Just (Extensions (Just exts)) -> exts
+                  _ -> []
+                allExts = Extensions (Just (baseExts ++ [sanExt]))
+                -- Apply CLI overrides for serial number and validity period
+                mSerialNum = listToMaybe [read s | CertSerialNumber s <- opts]
+                mNotBefore = listToMaybe [s | NotBefore s <- opts] >>= parseDateYYYYMMDD
+                mNotAfter  = listToMaybe [s | NotAfter s <- opts] >>= parseDateYYYYMMDD
+                extAttrs = extAttrs0
+                  { etaExtensions = Just allExts
+                  , etaSerialNumber = mSerialNum
+                  , etaNotBefore = mNotBefore
+                  , etaNotAfter = mNotAfter
+                  }
             when (not jsonMode') $ putStrLn "  Extended TCG attributes loaded from config file"
             return
               ( pccManufacturer config,
@@ -275,8 +319,21 @@ doGenerate opts _ = do
             putStrLn " Generating certificate with real signature and proper EK certificate binding..."
 
           -- Generate certificate
+          -- Add AKI extension from CA cert's SKI (CHN-001)
+          let mExtAttrsWithAki = case mExtAttrs of
+                Just ea -> case etaExtensions ea of
+                  Just (Extensions (Just exts)) ->
+                    let akiExts = case buildAkiExtension caCert of
+                          Just aki -> [aki] ++ exts  -- AKI first
+                          Nothing  -> exts
+                    in Just ea { etaExtensions = Just (Extensions (Just akiExts)) }
+                  _ -> case buildAkiExtension caCert of
+                    Just aki -> Just ea { etaExtensions = Just (Extensions (Just [aki])) }
+                    Nothing  -> Just ea
+                Nothing -> Nothing
+
           when (not jsonMode') $ putStrLn $ "Using hash algorithm: " ++ hashAlg
-          result <- case mExtAttrs of
+          result <- case mExtAttrsWithAki of
             Just extAttrs -> do
               when (not jsonMode') $ putStrLn "  Using extended TCG attributes for IWG v1.1 compliance"
               createSignedPlatformCertificateExt platformConfig componentIdentifiers tpmInfo caPrivKey caCert ekCert hashAlg extAttrs
@@ -319,7 +376,7 @@ doGenerate opts _ = do
               let derBytes = encodeSignedPlatformCertificate cert
                   pem =
                     PEM
-                      { pemName = "PLATFORM CERTIFICATE",
+                      { pemName = "ATTRIBUTE CERTIFICATE",
                         pemHeader = [],
                         pemContent = derBytes
                       }
@@ -353,98 +410,229 @@ doGenerateDelta opts _ = do
 
   putStrLn "Generating delta platform certificate..."
 
-  -- Check for config file option first
   let configFile = extractOpt "config" (\case ConfigFile f -> Just f; _ -> Nothing) opts ""
-
-  -- Extract options
-  let baseCertFile = extractOpt "base-cert" (\case BaseCertificate f -> Just f; _ -> Nothing) opts ""
-      _baseSerial = extractOpt "base-serial" (\case BaseSerial s -> Just s; _ -> Nothing) opts ""
-      componentChanges = extractOpt "component-changes" (\case ComponentChanges c -> Just c; _ -> Nothing) opts ""
+      baseCertFile = extractOpt "base-cert" (\case BaseCertificate f -> Just f; _ -> Nothing) opts ""
       outputFile = extractOpt "output" (\case Output o -> Just o; _ -> Nothing) opts "delta-cert.pem"
       caKeyFile = extractOpt "ca-key" (\case CAPrivateKey k -> Just k; _ -> Nothing) opts ""
       caCertFile = extractOpt "ca-cert" (\case CACertificate c -> Just c; _ -> Nothing) opts ""
+      hashAlg = extractOpt "hash" (\case HashAlgorithm h -> Just h; _ -> Nothing) opts "sha384"
+      extFileOpt = extractOpt "extensions" (\case ExtensionsFile f -> Just f; _ -> Nothing) opts ""
 
-  -- Check required parameters
-  if null baseCertFile
-    then do
-      putStrLn "Error: Base platform certificate is required for delta certificate generation"
-      putStrLn "Please provide --base-cert option"
-      putStrLn ""
-      putStrLn "Usage:"
-      putStrLn "  tcg-platform-cert-util generate-delta --base-cert base.pem --ca-key ca-key.pem --ca-cert ca-cert.pem --output delta.pem"
-      exitFailure
-    else return ()
+  when (null baseCertFile) $ do
+    putStrLn "Error: Base platform certificate is required for delta certificate generation"
+    putStrLn "Please provide --base-cert option"
+    exitFailure
 
-  -- Check if CA key and certificate are provided (required)
-  if null caKeyFile || null caCertFile
-    then do
-      putStrLn "Error: CA private key and certificate are required for delta certificate generation"
-      putStrLn "Please provide both --ca-key and --ca-cert options"
-      exitFailure
-    else do
-      putStrLn $ "Loading base platform certificate from: " ++ baseCertFile
-      putStrLn $ "Loading CA private key from: " ++ caKeyFile
-      putStrLn $ "Loading CA certificate from: " ++ caCertFile
+  when (null configFile) $ do
+    putStrLn "Error: Delta configuration file is required"
+    putStrLn "Please provide --config option"
+    exitFailure
 
-      -- Load CA key and certificate
-      keyResult <- loadPrivateKey caKeyFile
-      certResult <- loadCACertificate caCertFile
+  when (null caKeyFile || null caCertFile) $ do
+    putStrLn "Error: CA private key and certificate are required for delta certificate generation"
+    putStrLn "Please provide both --ca-key and --ca-cert options"
+    exitFailure
 
-      case (keyResult, certResult) of
-        (Right _caPrivKey, Right _caCert) -> do
-          putStrLn "CA credentials loaded successfully"
+  putStrLn $ "Loading base platform certificate from: " ++ baseCertFile
+  putStrLn $ "Loading delta configuration from: " ++ configFile
+  putStrLn $ "Loading CA private key from: " ++ caKeyFile
+  putStrLn $ "Loading CA certificate from: " ++ caCertFile
 
-          -- Load and parse the base platform certificate
-          baseCertResult <- loadBasePlatformCertificate baseCertFile
-          -- TODO Too many nested case - refactor
-          case baseCertResult of
-            Left baseErr -> do
-              putStrLn $ "Error loading base platform certificate: " ++ baseErr
+  keyResult <- loadPrivateKey caKeyFile
+  certResult <- loadCACertificate caCertFile
+  baseCertResult <- loadBasePlatformCertificate baseCertFile
+  configResult <- loadAnyDeltaConfig configFile
+
+  case (keyResult, certResult, baseCertResult, configResult) of
+    (Right caPrivKey, Right caCert, Right baseCert, Right deltaConfig) -> do
+      -- Build SAN + optional Extensions.json + AKI extension
+      let configDir = takeDirectory configFile
+          extFile = if null extFileOpt then configDir </> "Extensions.json" else extFileOpt
+
+      extExists <- doesFileExist extFile
+      mExtensions <- if extExists
+        then do
+          extResult <- loadPaccorExtensions extFile
+          case extResult of
+            Left err -> do
+              putStrLn $ "  Warning: Could not parse Extensions: " ++ err
+              return Nothing
+            Right ext -> do
+              putStrLn $ "  Loaded Extensions from: " ++ extFile
+              return $ Just (paccorExtensionsToX509 ext)
+        else return Nothing
+
+      case deltaConfigToExtendedAttrs deltaConfig of
+        Left err -> do
+          putStrLn $ "Error in delta configuration: " ++ err
+          exitFailure
+        Right extAttrs0 -> do
+          holderRef <- case mkHolderReferenceFromBase baseCert of
+            Left err -> do
+              putStrLn $ "Error deriving Holder reference from base certificate: " ++ err
               exitFailure
-            Right baseCert -> do
-              putStrLn "Base platform certificate loaded successfully"
-              putStrLn "Generating delta certificate with component changes..."
+            Right ref -> return ref
 
-              -- Load configuration from YAML file if provided
-              _deltaInfo <-
-                if null configFile
-                  then do
-                    putStrLn $ "Using command-line options for delta configuration"
-                    putStrLn $ "Component changes specified: " ++ componentChanges
-                    return Nothing
-                  else do
-                    putStrLn $ "Loading delta configuration from: " ++ configFile
-                    result <- loadDeltaConfig configFile
-                    case result of
-                      Left err -> do
-                        putStrLn $ "Error loading delta config file: " ++ err
-                        exitFailure
-                      Right config -> do
-                        putStrLn $ "Delta configuration loaded successfully"
-                        putStrLn $ "Delta serial: " ++ fromMaybe "None" (dccBaseCertificateSerial config)
-                        putStrLn $ "Change description: " ++ fromMaybe "None" (dccChangeDescription config)
-                        putStrLn $ "Including " ++ show (length (dccComponents config)) ++ " component(s) from configuration:"
-                        forM_ (dccComponents config) $ \comp -> do
-                          putStrLn $ "  - " ++ ccManufacturer comp ++ " " ++ ccModel comp ++ " (Class: " ++ ccClass comp ++ ")"
-                        return (Just config)
+          let sanExt = buildSanExtension (deltaConfigToPlatformConfig deltaConfig)
+              baseExts = case mExtensions of
+                Just (Extensions (Just exts)) -> exts
+                _ -> []
+              extsWithSan = baseExts ++ [sanExt]  -- SAN last
+              extsWithAki = case buildAkiExtension caCert of
+                Just aki -> [aki] ++ extsWithSan  -- AKI first
+                Nothing -> extsWithSan
+              -- Apply CLI overrides for serial number and validity period
+              mSerialNum = listToMaybe [read s | CertSerialNumber s <- opts]
+              mNotBefore = listToMaybe [s | NotBefore s <- opts] >>= parseDateYYYYMMDD
+              mNotAfter  = listToMaybe [s | NotAfter s <- opts] >>= parseDateYYYYMMDD
+              extAttrs =
+                extAttrs0
+                  { etaHolderBaseCertificateID = Just holderRef,
+                    etaExtensions = Just (Extensions (Just extsWithAki)),
+                    etaSerialNumber = mSerialNum,
+                    etaNotBefore = mNotBefore,
+                    etaNotAfter = mNotAfter
+                  }
+              platformConfig = PlatformConfiguration
+                { pcManufacturer = BC.pack (dccManufacturer deltaConfig),
+                  pcModel = BC.pack (dccModel deltaConfig),
+                  pcVersion = BC.pack (dccVersion deltaConfig),
+                  pcSerial = BC.pack (dccSerial deltaConfig),
+                  pcComponents = map yamlComponentToComponentIdentifier (dccComponents deltaConfig)
+                }
+              componentIdentifiers = map yamlComponentToComponentIdentifier (dccComponents deltaConfig)
+              tpmInfo = createDefaultTPMInfo
 
-              -- Generate delta certificate (enhanced implementation with YAML support)
-              putStrLn "Delta certificate generation with YAML configuration support is now implemented!"
-              putStrLn $ "Base certificate serial: " ++ show (pciSerialNumber $ getPlatformCertificate baseCert)
-              putStrLn "Delta certificate features:"
-              putStrLn "- Base certificate validation and loading ✓"
-              putStrLn "- CA credentials verification ✓"
-              putStrLn "- YAML configuration file support ✓"
-              putStrLn "- Extended platform fields support ✓"
-              putStrLn "- Component change tracking ✓"
-              putStrLn "- Delta certificate structure definition ✓"
-              putStrLn $ "Output file would be written to: " ++ outputFile
-        (Left keyErr, _) -> do
-          putStrLn $ "Error loading CA private key: " ++ keyErr
-          exitFailure
-        (_, Left certErr) -> do
-          putStrLn $ "Error loading CA certificate: " ++ certErr
-          exitFailure
+          putStrLn $ "Base certificate serial: " ++ show (pciSerialNumber $ getPlatformCertificate baseCert)
+          putStrLn $ "Including " ++ show (length componentIdentifiers) ++ " component change(s)"
+          putStrLn $ "Using hash algorithm: " ++ hashAlg
+
+          -- For Delta generation, Holder is overridden via etaHolderBaseCertificateID.
+          -- The EK cert argument is not used in that path, so pass CA cert as placeholder.
+          certGenResult <- createSignedPlatformCertificateExt
+            platformConfig
+            componentIdentifiers
+            tpmInfo
+            caPrivKey
+            caCert
+            caCert
+            hashAlg
+            extAttrs
+
+          case certGenResult of
+            Left err -> do
+              putStrLn $ "Delta certificate generation failed: " ++ err
+              exitFailure
+            Right cert -> do
+              let derBytes = encodeSignedPlatformCertificate cert
+                  pem =
+                    PEM
+                      { pemName = "ATTRIBUTE CERTIFICATE",
+                        pemHeader = [],
+                        pemContent = derBytes
+                      }
+              writePEMFile outputFile [pem]
+              putStrLn $ "Delta certificate written to: " ++ outputFile
+    (Left keyErr, _, _, _) -> do
+      putStrLn $ "Error loading CA private key: " ++ keyErr
+      exitFailure
+    (_, Left certErr, _, _) -> do
+      putStrLn $ "Error loading CA certificate: " ++ certErr
+      exitFailure
+    (_, _, Left baseErr, _) -> do
+      putStrLn $ "Error loading base platform certificate: " ++ baseErr
+      exitFailure
+    (_, _, _, Left cfgErr) -> do
+      putStrLn $ "Error loading delta config file: " ++ cfgErr
+      exitFailure
+  where
+    deltaConfigToPlatformConfig :: DeltaCertConfig -> PlatformCertConfig
+    deltaConfigToPlatformConfig dcc =
+      PlatformCertConfig
+        { pccManufacturer = dccManufacturer dcc,
+          pccModel = dccModel dcc,
+          pccVersion = dccVersion dcc,
+          pccSerial = dccSerial dcc,
+          pccManufacturerId = Nothing,
+          pccValidityDays = dccValidityDays dcc,
+          pccKeySize = dccKeySize dcc,
+          pccComponents = dccComponents dcc,
+          pccProperties = Nothing,
+          pccPlatformConfigUri = dccPlatformConfigUri dcc,
+          pccComponentsUri = Nothing,
+          pccPropertiesUri = Nothing,
+          pccPlatformClass = dccPlatformClass dcc,
+          pccSpecificationVersion = dccSpecificationVersion dcc,
+          pccMajorVersion = dccMajorVersion dcc,
+          pccMinorVersion = dccMinorVersion dcc,
+          pccPatchVersion = dccPatchVersion dcc,
+          pccPlatformQualifier = dccPlatformQualifier dcc,
+          pccCredentialSpecMajor = Nothing,
+          pccCredentialSpecMinor = Nothing,
+          pccCredentialSpecRevision = Nothing,
+          pccPlatformSpecMajor = Nothing,
+          pccPlatformSpecMinor = Nothing,
+          pccPlatformSpecRevision = Nothing,
+          pccSecurityAssertions = Nothing
+        }
+
+    platformToDeltaConfig :: PlatformCertConfig -> DeltaCertConfig
+    platformToDeltaConfig cfg =
+      DeltaCertConfig
+        { dccManufacturer = pccManufacturer cfg
+        , dccModel = pccModel cfg
+        , dccVersion = pccVersion cfg
+        , dccSerial = pccSerial cfg
+        , dccValidityDays = pccValidityDays cfg
+        , dccKeySize = pccKeySize cfg
+        , dccComponents = pccComponents cfg
+        , dccPlatformConfigUri = pccPlatformConfigUri cfg
+        , dccPlatformClass = pccPlatformClass cfg
+        , dccSpecificationVersion = pccSpecificationVersion cfg
+        , dccMajorVersion = pccMajorVersion cfg
+        , dccMinorVersion = pccMinorVersion cfg
+        , dccPatchVersion = pccPatchVersion cfg
+        , dccPlatformQualifier = pccPlatformQualifier cfg
+        , dccBaseCertificateSerial = Nothing
+        , dccDeltaSequenceNumber = Nothing
+        , dccChangeDescription = Nothing
+        }
+
+    loadAnyDeltaConfig :: FilePath -> IO (Either String DeltaCertConfig)
+    loadAnyDeltaConfig fp = do
+      deltaParsed <- loadDeltaConfig fp
+      case deltaParsed of
+        Right cfg -> return (Right cfg)
+        Left deltaErr -> do
+          anyParsed <- loadAnyConfig fp
+          return $ case anyParsed of
+            Right baseLikeCfg -> Right (platformToDeltaConfig baseLikeCfg)
+            Left anyErr ->
+              Left $
+                "Could not parse delta config as Delta YAML or base-style YAML/JSON. "
+                  ++ "Delta parse error: " ++ deltaErr
+                  ++ " / Generic parse error: " ++ anyErr
+
+    mkHolderReferenceFromBase :: SignedPlatformCertificate -> Either String IssuerSerial
+    mkHolderReferenceFromBase baseCert =
+      let baseInfo = getPlatformCertificate baseCert
+          issuerDns = extractIssuerDns (pciIssuer baseInfo)
+          serialNum = pciSerialNumber baseInfo
+      in if null issuerDns
+           then Left "base certificate issuer does not contain a directoryName"
+           else Right $ IssuerSerial (map AltDirectoryName issuerDns) serialNum Nothing
+
+    extractIssuerDns :: AttCertIssuer -> [DistinguishedName]
+    extractIssuerDns (AttCertIssuerV1 gns) = extractDnsFromGeneralNames gns
+    extractIssuerDns (AttCertIssuerV2 v2form) =
+      case v2formBaseCertificateID v2form of
+        Just (IssuerSerial gns _ _) -> extractDnsFromGeneralNames gns
+        Nothing -> extractDnsFromGeneralNames (v2formIssuerName v2form)
+
+    extractDnsFromGeneralNames :: [AltName] -> [DistinguishedName]
+    extractDnsFromGeneralNames [] = []
+    extractDnsFromGeneralNames (AltDirectoryName dn : rest) = dn : extractDnsFromGeneralNames rest
+    extractDnsFromGeneralNames (_ : rest) = extractDnsFromGeneralNames rest
 
 -- | Show certificate information
 doShow :: [TCGOpts] -> [String] -> IO ()
@@ -618,120 +806,6 @@ doComponents opts files = do
 -- | Generate a platform certificate using paccor signer directly.
 -- This mode consumes paccor JSON files (ComponentList + Extensions + PolicyReference)
 -- and delegates certificate construction/signing to paccor for compatibility.
-doGenerateWithPaccorSigner :: [TCGOpts] -> IO ()
-doGenerateWithPaccorSigner opts = do
-  let configFile = extractOpt "config" (\case ConfigFile f -> Just f; _ -> Nothing) opts ""
-      outputFile = extractOpt "output" (\case Output o -> Just o; _ -> Nothing) opts "platform-cert.pem"
-      caKeyFile = extractOpt "ca-key" (\case CAPrivateKey k -> Just k; _ -> Nothing) opts ""
-      caCertFile = extractOpt "ca-cert" (\case CACertificate c -> Just c; _ -> Nothing) opts ""
-      ekCertFile = extractOpt "ek-cert" (\case TPMEKCertificate e -> Just e; _ -> Nothing) opts ""
-      holderFileOpt = extractOpt "paccor-holder" (\case PaccorHolderFile f -> Just f; _ -> Nothing) opts ""
-      extFileOpt = extractOpt "paccor-extensions" (\case PaccorExtensionsFile f -> Just f; _ -> Nothing) opts ""
-      policyFileOpt = extractOpt "paccor-policy" (\case PaccorPolicyFile f -> Just f; _ -> Nothing) opts ""
-      signerPathOpt = extractOpt "paccor-signer" (\case PaccorSignerPath f -> Just f; _ -> Nothing) opts ""
-      validatorPathOpt = extractOpt "paccor-validator" (\case PaccorValidatorPath f -> Just f; _ -> Nothing) opts ""
-      certSerial = extractOpt "paccor-cert-serial" (\case PaccorCertSerial s -> Just s; _ -> Nothing) opts "1"
-      notBefore = extractOpt "paccor-not-before" (\case PaccorNotBefore s -> Just s; _ -> Nothing) opts "20180101"
-      notAfter = extractOpt "paccor-not-after" (\case PaccorNotAfter s -> Just s; _ -> Nothing) opts "20680101"
-
-  when (null configFile) $ do
-    putStrLn "Error: --config is required with --use-paccor-signer"
-    exitFailure
-  when (null caKeyFile || null caCertFile) $ do
-    putStrLn "Error: --ca-key and --ca-cert are required with --use-paccor-signer"
-    exitFailure
-
-  let configDir = takeDirectory configFile
-      extFile = if null extFileOpt then configDir </> "Extensions.json" else extFileOpt
-      policyFile = if null policyFileOpt then configDir </> "PolicyReference.json" else policyFileOpt
-      holderFile = if null holderFileOpt then ekCertFile else holderFileOpt
-
-  when (null holderFile) $ do
-    putStrLn "Error: --ek-cert or --paccor-holder is required with --use-paccor-signer"
-    exitFailure
-
-  signerEnv <- lookupEnv "PACCOR_SIGNER_PATH"
-  validatorEnv <- lookupEnv "PACCOR_VALIDATOR_PATH"
-  let signerPath = if null signerPathOpt then fromMaybe "/opt/paccor/bin/signer" signerEnv else signerPathOpt
-      validatorPath = if null validatorPathOpt then fromMaybe "/opt/paccor/bin/validator" validatorEnv else validatorPathOpt
-
-  ensureFile "config file" configFile
-  ensureFile "extensions file" extFile
-  ensureFile "policy file" policyFile
-  ensureFile "CA private key file" caKeyFile
-  ensureFile "CA certificate file" caCertFile
-  ensureFile "holder file" holderFile
-  ensureFile "paccor signer binary" signerPath
-
-  let caCertClean = outputFile ++ ".tmp-paccor-ca.pem"
-      holderClean = outputFile ++ ".tmp-paccor-holder.pem"
-      cleanup = do
-        safeRemove caCertClean
-        safeRemove holderClean
-
-  normalizeFirstPemBlock caCertFile caCertClean
-  normalizeFirstPemBlock holderFile holderClean
-
-  finally
-    (do
-      putStrLn $ "Using paccor signer: " ++ signerPath
-      runExternalChecked "paccor signer" signerPath
-        [ "-x", extFile
-        , "-c", configFile
-        , "-e", holderClean
-        , "-p", policyFile
-        , "-k", caKeyFile
-        , "-P", caCertClean
-        , "-N", certSerial
-        , "-b", notBefore
-        , "-a", notAfter
-        , "--pem"
-        , "-f", outputFile
-        ]
-      validatorExists <- doesFileExist validatorPath
-      if validatorExists
-        then do
-          putStrLn $ "Validating with paccor validator: " ++ validatorPath
-          runExternalChecked "paccor validator" validatorPath
-            [ "-P", caCertClean
-            , "-X", outputFile
-            ]
-        else do
-          putStrLn $ "Skipping validator (not found): " ++ validatorPath
-      putStrLn $ "Certificate written to: " ++ outputFile
-    )
-    cleanup
-  where
-    ensureFile :: String -> FilePath -> IO ()
-    ensureFile label path = do
-      ok <- doesFileExist path
-      unless ok $ do
-        putStrLn $ "Error: " ++ label ++ " not found: " ++ path
-        exitFailure
-
-    safeRemove :: FilePath -> IO ()
-    safeRemove path = do
-      ok <- doesFileExist path
-      when ok (removeFile path)
-
-    normalizeFirstPemBlock :: FilePath -> FilePath -> IO ()
-    normalizeFirstPemBlock src dst = do
-      content <- B.readFile src
-      case pemParseBS content of
-        Right (pem:_) -> B.writeFile dst (pemWriteBS pem)
-        _ -> B.writeFile dst content
-
-    runExternalChecked :: String -> FilePath -> [String] -> IO ()
-    runExternalChecked label cmd args = do
-      (ec, out, err) <- readProcessWithExitCode cmd args ""
-      unless (null out) (putStrLn out)
-      unless (null err) (putStrLn err)
-      case ec of
-        ExitSuccess -> return ()
-        ExitFailure code -> do
-          putStrLn $ "Error: " ++ label ++ " failed with exit code " ++ show code
-          exitFailure
-
 -- | Write PEM file
 writePEMFile :: FilePath -> [PEM] -> IO ()
 writePEMFile file pems = do
@@ -775,28 +849,29 @@ optionsGenerate =
     Option [] ["skip-compliance"] (NoArg SkipCompliance) "skip pre-issuance compliance checks",
     Option [] ["compat"] (NoArg Compat) "operational compatibility profile (default)",
     Option [] ["strict-v11"] (NoArg StrictV11Mode) "strict v1.1 profile",
-    Option [] ["use-paccor-signer"] (NoArg UsePaccorSigner) "generate via paccor signer using paccor config files",
-    Option [] ["paccor-extensions"] (ReqArg PaccorExtensionsFile "FILE") "paccor Extensions.json (default: alongside --config)",
-    Option [] ["paccor-policy"] (ReqArg PaccorPolicyFile "FILE") "paccor PolicyReference.json (default: alongside --config)",
-    Option [] ["paccor-signer"] (ReqArg PaccorSignerPath "FILE") "paccor signer binary path (or $PACCOR_SIGNER_PATH)",
-    Option [] ["paccor-validator"] (ReqArg PaccorValidatorPath "FILE") "paccor validator binary path (optional)",
-    Option [] ["paccor-cert-serial"] (ReqArg PaccorCertSerial "NUM") "certificate serial used by paccor signer (-N)",
-    Option [] ["paccor-not-before"] (ReqArg PaccorNotBefore "YYYYMMDD") "certificate notBefore for paccor signer (-b)",
-    Option [] ["paccor-not-after"] (ReqArg PaccorNotAfter "YYYYMMDD") "certificate notAfter for paccor signer (-a)",
-    Option [] ["paccor-holder"] (ReqArg PaccorHolderFile "FILE") "holder cert for paccor signer (-e), default: --ek-cert",
+    Option [] ["policy-ref"] (ReqArg PolicyRefFile "FILE") "PolicyReference.json path (auto-detected from --config dir)",
+    Option [] ["extensions"] (ReqArg ExtensionsFile "FILE") "Extensions.json path (auto-detected from --config dir)",
     Option [] ["json"] (NoArg JsonOutput) "output results in JSON format",
+    Option [] ["serial-number"] (ReqArg CertSerialNumber "NUM") "certificate serial number (default: 1)",
+    Option [] ["not-before"] (ReqArg NotBefore "YYYYMMDD") "validity start date (e.g. 20180101)",
+    Option [] ["not-after"] (ReqArg NotAfter "YYYYMMDD") "validity end date (e.g. 20680101)",
     Option ['h'] ["help"] (NoArg Help) "show help"
   ]
 
 optionsGenerateDelta :: [OptDescr TCGOpts]
 optionsGenerateDelta =
   [ Option ['o'] ["output"] (ReqArg Output "FILE") "output file (default: delta-cert.pem)",
+    Option ['f'] ["config"] (ReqArg ConfigFile "FILE") "Delta YAML/JSON configuration file [REQUIRED]",
     Option ['b'] ["base-cert"] (ReqArg BaseCertificate "FILE") "base platform certificate file (PEM format) [REQUIRED]",
     Option [] ["base-serial"] (ReqArg BaseSerial "NUM") "base certificate serial number",
     Option [] ["component-changes"] (ReqArg ComponentChanges "CHANGES") "component changes description",
     Option ['k'] ["ca-key"] (ReqArg CAPrivateKey "FILE") "CA private key file (PEM format) [REQUIRED]",
     Option ['c'] ["ca-cert"] (ReqArg CACertificate "FILE") "CA certificate file (PEM format) [REQUIRED]",
+    Option [] ["extensions"] (ReqArg ExtensionsFile "FILE") "Extensions.json path (auto-detected from --config dir)",
     Option [] ["hash"] (ReqArg HashAlgorithm "ALGORITHM") "Hash algorithm (sha256|sha384|sha512, default: sha384)",
+    Option [] ["serial-number"] (ReqArg CertSerialNumber "NUM") "certificate serial number",
+    Option [] ["not-before"] (ReqArg NotBefore "YYYYMMDD") "validity start date (e.g. 20180101)",
+    Option [] ["not-after"] (ReqArg NotAfter "YYYYMMDD") "validity end date (e.g. 20680101)",
     Option ['h'] ["help"] (NoArg Help) "show help"
   ]
 
@@ -1456,3 +1531,32 @@ usage = do
   putStrLn "  help           : Show this help"
   putStrLn ""
   putStrLn "Use 'tcg-platform-cert-util <command> --help' for command-specific options."
+
+-- | Parse a YYYYMMDD string into a DateTime (midnight UTC)
+parseDateYYYYMMDD :: String -> Maybe DateTime
+parseDateYYYYMMDD s
+  | length s == 8 =
+    let yearStr  = take 4 s
+        monthStr = take 2 (drop 4 s)
+        dayStr   = take 2 (drop 6 s)
+    in do
+      y <- readMaybe yearStr
+      m <- intToMonth =<< readMaybe monthStr
+      d <- readMaybe dayStr
+      return $ DateTime (Date y m d) (TimeOfDay 0 0 0 0)
+  | otherwise = Nothing
+  where
+    intToMonth :: Int -> Maybe HG.Month
+    intToMonth 1  = Just HG.January
+    intToMonth 2  = Just HG.February
+    intToMonth 3  = Just HG.March
+    intToMonth 4  = Just HG.April
+    intToMonth 5  = Just HG.May
+    intToMonth 6  = Just HG.June
+    intToMonth 7  = Just HG.July
+    intToMonth 8  = Just HG.August
+    intToMonth 9  = Just HG.September
+    intToMonth 10 = Just HG.October
+    intToMonth 11 = Just HG.November
+    intToMonth 12 = Just HG.December
+    intToMonth _  = Nothing

@@ -181,12 +181,12 @@ checkRtmType :: SecurityAssertionsConfig -> [ConfigLintResult]
 checkRtmType sa = case sacRTMType sa of
   Nothing -> [mkPass' (CheckId Security 3) May "rtmType not present (optional)"]
   Just rt
-    | rt `elem` ["static", "dynamic", "nonHosted", "hybrid"] ->
+    | rt `elem` ["static", "dynamic", "nonHosted", "hybrid", "physical", "virtual"] ->
         [mkPass' (CheckId Security 3) May "rtmType in valid range"]
     | otherwise ->
         [ ConfigLintResult (PreflightCheck (CheckId Security 3)) Must LintFail
             ("rtmType invalid: " <> T.pack rt)
-            (Just (ValueSuggestion "rtmType" "must be one of \"static\", \"dynamic\", \"nonHosted\", \"hybrid\""))
+            (Just (ValueSuggestion "rtmType" "must be one of \"static\", \"dynamic\", \"nonHosted\", \"hybrid\", \"physical\", \"virtual\""))
         ]
 
 -- ============================================================

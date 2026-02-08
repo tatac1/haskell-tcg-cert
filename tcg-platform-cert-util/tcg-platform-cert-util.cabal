@@ -49,7 +49,6 @@ Library
                    , containers
                    , directory
                    , filepath
-                   , process
                    , time-hourglass
                    , memory
                    , pem
@@ -91,7 +90,6 @@ Executable           tcg-platform-cert-util
                    , containers
                    , directory
                    , filepath
-                   , process
                    , time-hourglass
                    , memory
                    , pem

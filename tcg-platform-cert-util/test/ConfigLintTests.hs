@@ -181,6 +181,20 @@ tests = testGroup "ConfigLint"
             results = lintPlatformConfig config
             sec003Fails = filter (isFailForCheck (PreflightCheck (CheckId Security 3))) results
         assertBool "SEC-003 fails" (not (null sec003Fails))
+
+    , testCase "physical rtmType passes SEC-003" $ do
+        let sa = defaultSecAssertions { sacRTMType = Just "physical" }
+            config = validBaseConfig { pccSecurityAssertions = Just sa }
+            results = lintPlatformConfig config
+            sec003Fails = filter (isFailForCheck (PreflightCheck (CheckId Security 3))) results
+        assertBool "SEC-003 should pass for physical" (null sec003Fails)
+
+    , testCase "virtual rtmType passes SEC-003" $ do
+        let sa = defaultSecAssertions { sacRTMType = Just "virtual" }
+            config = validBaseConfig { pccSecurityAssertions = Just sa }
+            results = lintPlatformConfig config
+            sec003Fails = filter (isFailForCheck (PreflightCheck (CheckId Security 3))) results
+        assertBool "SEC-003 should pass for virtual" (null sec003Fails)
     ]
   ]
 

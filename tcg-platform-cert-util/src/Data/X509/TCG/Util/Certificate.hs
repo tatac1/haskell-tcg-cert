@@ -52,6 +52,8 @@ where
 
 import Control.Monad (when)
 import qualified Crypto.PubKey.DSA as DSA
+import qualified Crypto.PubKey.ECC.ECDSA as ECDSA
+import qualified Crypto.PubKey.ECC.Prim as ECCPrim
 import qualified Crypto.PubKey.ECC.Types as ECC
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString as B
@@ -60,7 +62,7 @@ import Data.Hourglass (Date (..), DateTime (..), Month (..), TimeOfDay (..), tim
 import Data.PEM (PEM (..), pemContent, pemParseBS)
 import Data.Time.Clock (UTCTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
-import Data.X509 (Certificate, PrivKey (..), PubKey (..), certPubKey, getCertificate)
+import Data.X509 (Certificate, PrivKey (..), PrivKeyEC (..), PubKey (..), certPubKey, certSubjectDN, getCertificate)
 import Data.X509.AttCert (AttCertValidityPeriod (..))
 import Data.X509.Memory (readKeyFileFromMemory, readSignedObjectFromMemory)
 import Data.X509.TCG
@@ -180,24 +182,16 @@ createSignedPlatformCertificate config components tpmInfo caPrivKey _caCert ekCe
       case result of
         Left err -> return $ Left err
         Right pair -> return $ Right (TCG.pairSignedCert pair)
-    PrivKeyEC _ecPrivKey -> do
+    PrivKeyEC ecPrivKey -> do
       putStrLn "DEBUG: Using EC private key"
-      -- Use TCG library to generate compatible EC keys
-      -- NOTE: X.509 PrivKeyEC and TCG ECDSA.PrivateKey are different types
-      -- For now, generate compatible keys that work with TCG library
-      let algEC = case hashAlg of
-            "sha256" -> TCG.AlgEC ECC.SEC_p256r1 TCG.hashSHA256
-            "sha384" -> TCG.AlgEC ECC.SEC_p256r1 TCG.hashSHA384
-            "sha512" -> TCG.AlgEC ECC.SEC_p256r1 TCG.hashSHA512
-            _ -> TCG.AlgEC ECC.SEC_p256r1 TCG.hashSHA384 -- Default
-      (_, tempPubKey, tempPrivKey) <- TCG.generateKeys algEC
-      let subjectKeys = (algEC, tempPubKey, tempPrivKey)
-
-      putStrLn "DEBUG: About to call TCG.mkPlatformCertificate with EC"
-      result <- TCG.mkPlatformCertificate config components tpmInfo ekCert validity TCG.Self subjectKeys hashAlg
-      case result of
+      case ecPrivKeyToTCGKeys hashAlg ecPrivKey of
         Left err -> return $ Left err
-        Right pair -> return $ Right (TCG.pairSignedCert pair)
+        Right subjectKeys -> do
+          putStrLn "DEBUG: About to call TCG.mkPlatformCertificate with EC"
+          result <- TCG.mkPlatformCertificate config components tpmInfo ekCert validity TCG.Self subjectKeys hashAlg
+          case result of
+            Left err -> return $ Left err
+            Right pair -> return $ Right (TCG.pairSignedCert pair)
     PrivKeyEd25519 ed25519PrivKey -> do
       putStrLn "DEBUG: Using Ed25519 private key"
       let algEd25519 = TCG.AlgEd25519
@@ -260,14 +254,42 @@ createSignedPlatformCertificate config components tpmInfo caPrivKey _caCert ekCe
     keyType (PrivKeyDSA _) = "DSA"
     keyType _ = "Unknown"
 
+ecPrivKeyToTCGKeys :: String -> PrivKeyEC -> Either String (TCG.Keys ECDSA.PublicKey ECDSA.PrivateKey)
+ecPrivKeyToTCGKeys hashAlg privKey = do
+  (curveName, privD) <- case privKey of
+    PrivKeyEC_Named name d -> Right (name, d)
+    _ -> Left "Unsupported EC private key format: explicit curve parameters are not supported"
+
+  let curve = ECC.getCurveByName curveName
+      algEC = case hashAlg of
+        "sha256" -> TCG.AlgEC curveName TCG.hashSHA256
+        "sha384" -> TCG.AlgEC curveName TCG.hashSHA384
+        "sha512" -> TCG.AlgEC curveName TCG.hashSHA512
+        _ -> TCG.AlgEC curveName TCG.hashSHA384
+      priv = ECDSA.PrivateKey curve privD
+
+  common <- case curve of
+    ECC.CurveFP (ECC.CurvePrime _ cc) -> Right cc
+    _ -> Left "Unsupported EC curve kind: only prime curves are supported"
+
+  let pubPoint = ECCPrim.pointMul curve privD (ECC.ecc_g common)
+      pub = ECDSA.PublicKey curve pubPoint
+  Right (algEC, pub, priv)
+
 -- | Create a signed Platform Certificate with extended TCG attributes (IWG v1.1 full compliance)
 createSignedPlatformCertificateExt :: PlatformConfiguration -> [ComponentIdentifier] -> TPMInfo -> PrivKey -> Certificate -> Certificate -> String -> TCG.ExtendedTCGAttributes -> IO (Either String SignedPlatformCertificate)
-createSignedPlatformCertificateExt config components tpmInfo caPrivKey _caCert ekCert hashAlg extAttrs = do
+createSignedPlatformCertificateExt config components tpmInfo caPrivKey caCert ekCert hashAlg extAttrs = do
   putStrLn "DEBUG: Starting createSignedPlatformCertificateExt with extended attributes"
   putStrLn $ "DEBUG: Using hash algorithm: " ++ hashAlg
 
-  let nowDt = DateTime (Date 2024 December 1) (TimeOfDay 0 0 0 0)
-      laterDt = DateTime (Date 2025 December 1) (TimeOfDay 0 0 0 0)
+  -- Set issuer DN from CA cert's subject DN
+  let extAttrsWithIssuer = extAttrs { TCG.etaIssuerDN = Just (certSubjectDN caCert) }
+
+  -- Use validity from ExtendedTCGAttributes if provided, otherwise use defaults
+  let defaultNotBefore = DateTime (Date 2024 December 1) (TimeOfDay 0 0 0 0)
+      defaultNotAfter  = DateTime (Date 2025 December 1) (TimeOfDay 0 0 0 0)
+      nowDt   = maybe defaultNotBefore id (TCG.etaNotBefore extAttrsWithIssuer)
+      laterDt = maybe defaultNotAfter  id (TCG.etaNotAfter extAttrsWithIssuer)
       validity = (nowDt, laterDt)
 
   case caPrivKey of
@@ -284,25 +306,20 @@ createSignedPlatformCertificateExt config components tpmInfo caPrivKey _caCert e
       let subjectKeys = (algRSA, tempPubKey, tempPrivKey)
 
       putStrLn "DEBUG: About to call TCG.mkPlatformCertificateExt with RSA"
-      result <- TCG.mkPlatformCertificateExt config components tpmInfo ekCert validity TCG.Self subjectKeys hashAlg extAttrs
+      result <- TCG.mkPlatformCertificateExt config components tpmInfo ekCert validity TCG.Self subjectKeys hashAlg extAttrsWithIssuer
       case result of
         Left err -> return $ Left err
         Right pair -> return $ Right (TCG.pairSignedCert pair)
-    PrivKeyEC _ecPrivKey -> do
+    PrivKeyEC ecPrivKey -> do
       putStrLn "DEBUG: Using EC private key with extended attributes"
-      let algEC = case hashAlg of
-            "sha256" -> TCG.AlgEC ECC.SEC_p256r1 TCG.hashSHA256
-            "sha384" -> TCG.AlgEC ECC.SEC_p256r1 TCG.hashSHA384
-            "sha512" -> TCG.AlgEC ECC.SEC_p256r1 TCG.hashSHA512
-            _ -> TCG.AlgEC ECC.SEC_p256r1 TCG.hashSHA384
-      (_, tempPubKey, tempPrivKey) <- TCG.generateKeys algEC
-      let subjectKeys = (algEC, tempPubKey, tempPrivKey)
-
-      putStrLn "DEBUG: About to call TCG.mkPlatformCertificateExt with EC"
-      result <- TCG.mkPlatformCertificateExt config components tpmInfo ekCert validity TCG.Self subjectKeys hashAlg extAttrs
-      case result of
+      case ecPrivKeyToTCGKeys hashAlg ecPrivKey of
         Left err -> return $ Left err
-        Right pair -> return $ Right (TCG.pairSignedCert pair)
+        Right subjectKeys -> do
+          putStrLn "DEBUG: About to call TCG.mkPlatformCertificateExt with EC"
+          result <- TCG.mkPlatformCertificateExt config components tpmInfo ekCert validity TCG.Self subjectKeys hashAlg extAttrsWithIssuer
+          case result of
+            Left err -> return $ Left err
+            Right pair -> return $ Right (TCG.pairSignedCert pair)
     PrivKeyEd25519 ed25519PrivKey -> do
       putStrLn "DEBUG: Using Ed25519 private key with extended attributes"
       let algEd25519 = TCG.AlgEd25519
@@ -311,7 +328,7 @@ createSignedPlatformCertificateExt config components tpmInfo caPrivKey _caCert e
       let subjectKeys = (algEd25519, tempPubKey, tempPrivKey)
 
       putStrLn "DEBUG: About to call TCG.mkPlatformCertificateExt with Ed25519"
-      result <- TCG.mkPlatformCertificateExt config components tpmInfo ekCert validity TCG.Self subjectKeys hashAlg extAttrs
+      result <- TCG.mkPlatformCertificateExt config components tpmInfo ekCert validity TCG.Self subjectKeys hashAlg extAttrsWithIssuer
       case result of
         Left err -> return $ Left err
         Right pair -> return $ Right (TCG.pairSignedCert pair)
@@ -323,7 +340,7 @@ createSignedPlatformCertificateExt config components tpmInfo caPrivKey _caCert e
       let subjectKeys = (algEd448, tempPubKey, tempPrivKey)
 
       putStrLn "DEBUG: About to call TCG.mkPlatformCertificateExt with Ed448"
-      result <- TCG.mkPlatformCertificateExt config components tpmInfo ekCert validity TCG.Self subjectKeys hashAlg extAttrs
+      result <- TCG.mkPlatformCertificateExt config components tpmInfo ekCert validity TCG.Self subjectKeys hashAlg extAttrsWithIssuer
       case result of
         Left err -> return $ Left err
         Right pair -> return $ Right (TCG.pairSignedCert pair)

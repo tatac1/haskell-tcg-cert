@@ -44,7 +44,7 @@ import qualified Data.ByteString.Char8 as BC
 import Data.Hourglass (timePrint)
 import Data.List (intercalate)
 import Data.X509 (AltName (..), DistinguishedName (..), ExtensionRaw (..), Extensions (..))
-import Data.X509.AttCert (AttCertIssuer (..), AttCertValidityPeriod (..), Holder (..), IssuerSerial (..), V2Form (v2fromIssuerName))
+import Data.X509.AttCert (AttCertIssuer (..), AttCertValidityPeriod (..), Holder (..), IssuerSerial (..), V2Form (v2formIssuerName))
 import Data.X509.Attribute (Attribute (..), Attributes (..))
 import Data.X509.TCG
 import Data.X509.TCG.Util.ASN1 (hexdump)
@@ -702,7 +702,7 @@ showIssuer :: AttCertIssuer -> IO ()
 showIssuer (AttCertIssuerV1 names) =
   putStrLn $ "  Issuer: " ++ formatAltNames names
 showIssuer (AttCertIssuerV2 v2form) = do
-  let names = v2fromIssuerName v2form
+  let names = v2formIssuerName v2form
   case names of
     [] -> putStrLn "  Issuer: (empty)"
     _ -> putStrLn $ "  Issuer: " ++ formatIssuerNames names
