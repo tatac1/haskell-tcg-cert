@@ -23,45 +23,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Haskell
+      - name: Setup Haskell (Stack)
         uses: haskell-actions/setup@v2
         with:
-          ghc-version: '9.6'
-          cabal-version: '3.10'
+          enable-stack: true
+          stack-version: 'latest'
+          cabal-update: false
 
-      - name: Cache Cabal
+      - name: Cache Stack
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cabal/packages
-            ~/.cabal/store
-            dist-newstyle
-          key: ${{ runner.os }}-test-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
+            ~/.stack
+            .stack-work
+          key: ${{ runner.os }}-stack-${{ hashFiles('stack.yaml', 'stack.yaml.lock', '**/*.cabal') }}
           restore-keys: |
-            ${{ runner.os }}-test-cabal-
+            ${{ runner.os }}-stack-
 
       - name: Install Z3 SMT solver
         run: |
           sudo apt-get update
           sudo apt-get install -y z3
 
-      - name: Update Cabal
-        run: cabal update
-
       - name: Build all packages
-        run: cabal build all
+        run: stack build --test --no-run-tests
 
       - name: Run tests for tcg-platform-cert
-        run: cabal test tcg-platform-cert --test-show-details=direct
+        run: stack test tcg-platform-cert
+
+      - name: Run tests for tcg-platform-cert-compliance
+        run: stack test tcg-platform-cert-compliance
 
       - name: Run tests for tcg-platform-cert-validation
-        run: cabal test tcg-platform-cert-validation --test-show-details=direct
+        run: stack test tcg-platform-cert-validation
 
       - name: Run tests for tcg-platform-cert-util
-        run: cabal test tcg-platform-cert-util --test-show-details=direct
+        run: stack test tcg-platform-cert-util
 
       - name: Run tests for platform-hardware-info
-        run: cabal test platform-hardware-info --test-show-details=direct
+        run: stack test platform-hardware-info
 
   # Linux static builds using Podman + Alpine musl
   build-linux:
@@ -126,22 +126,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Haskell
+      - name: Setup Haskell (Stack)
         uses: haskell-actions/setup@v2
         with:
-          ghc-version: '9.6'
-          cabal-version: '3.10'
+          enable-stack: true
+          stack-version: 'latest'
+          cabal-update: false
 
-      - name: Cache Cabal
+      - name: Cache Stack
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cabal/packages
-            ~/.cabal/store
-            dist-newstyle
-          key: ${{ runner.os }}-${{ matrix.arch }}-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
+            ~/.stack
+            .stack-work
+          key: ${{ runner.os }}-${{ matrix.arch }}-stack-${{ hashFiles('stack.yaml', 'stack.yaml.lock', '**/*.cabal') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.arch }}-cabal-
+            ${{ runner.os }}-${{ matrix.arch }}-stack-
 
       - name: Determine version
         id: version
@@ -152,16 +152,13 @@ jobs:
             echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update Cabal
-        run: cabal update
-
       - name: Build
-        run: cabal build tcg-platform-cert-util
+        run: stack build tcg-platform-cert-util
 
       - name: Copy binary
         run: |
           mkdir -p dist
-          BINARY=$(cabal list-bin tcg-platform-cert-util 2>/dev/null | grep -v "^Up to date" | tail -1)
+          BINARY=$(stack exec -- which tcg-platform-cert-util)
           cp "$BINARY" "dist/tcg-platform-cert-util-${{ steps.version.outputs.version }}-macos-${{ matrix.arch }}"
           chmod +x "dist/tcg-platform-cert-util-${{ steps.version.outputs.version }}-macos-${{ matrix.arch }}"
 
@@ -188,22 +185,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Haskell
+      - name: Setup Haskell (Stack)
         uses: haskell-actions/setup@v2
         with:
-          ghc-version: '9.6'
-          cabal-version: '3.10'
+          enable-stack: true
+          stack-version: 'latest'
+          cabal-update: false
 
-      - name: Cache Cabal
+      - name: Cache Stack
         uses: actions/cache@v4
         with:
           path: |
-            ~\AppData\Roaming\cabal\packages
-            ~\AppData\Roaming\cabal\store
-            dist-newstyle
-          key: ${{ runner.os }}-cabal-${{ hashFiles('**/*.cabal', 'cabal.project') }}
+            ~\AppData\Roaming\stack
+            ~\AppData\Local\Programs\stack
+            .stack-work
+          key: ${{ runner.os }}-stack-${{ hashFiles('stack.yaml', 'stack.yaml.lock', '**/*.cabal') }}
           restore-keys: |
-            ${{ runner.os }}-cabal-
+            ${{ runner.os }}-stack-
 
       - name: Determine version
         id: version
@@ -215,17 +213,14 @@ jobs:
             echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update Cabal
-        run: cabal update
-
       - name: Build
-        run: cabal build --project-file=cabal.project.windows tcg-platform-cert-util
+        run: stack build tcg-platform-cert-util
 
       - name: Copy binary
         shell: bash
         run: |
           mkdir -p dist
-          BINARY=$(cabal list-bin tcg-platform-cert-util 2>/dev/null | grep -v "^Up to date" | tail -1)
+          BINARY=$(stack exec -- which tcg-platform-cert-util)
           cp "$BINARY" "dist/tcg-platform-cert-util-${{ steps.version.outputs.version }}-windows-x86_64.exe"
 
       - name: Verify binary
