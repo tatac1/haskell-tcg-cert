@@ -119,6 +119,7 @@ module Data.X509.TCG
     defaultExtendedTCGAttributes,
     buildAttributesFromConfigExt,
     mkPlatformCertificateExt,
+    oidToContentBytes,
   )
 where
 
@@ -146,6 +147,8 @@ import Data.Hourglass (Date (..), DateTime (..), Month (..), TimeOfDay (..))
 import Data.X509 (Certificate (..), DistinguishedName (..), Extensions (..), HashALG (..), PubKeyALG (..), SignatureALG (..), objectToSignedExact, objectToSignedExactF, AltName(..), certIssuerDN, certSerial)
 import Data.X509.AttCert (AttCertIssuer (..), AttCertValidityPeriod (..), V2Form (..), Holder (..), IssuerSerial (..))
 import Data.X509.Attribute (Attribute (..), Attributes (..))
+import Data.Maybe (fromMaybe)
+import Data.Word (Word8)
 import Data.X509.TCG.Attributes
 import Data.X509.TCG.Component
 import Data.X509.TCG.Delta
@@ -402,7 +405,7 @@ buildPlatformCertificateInfoWithValidity config components tpmInfo validity ekCe
        Left err -> Left err
        Right attrs -> Right $
          PlatformCertificateInfo
-           { pciVersion = 2, -- v2 certificate
+           { pciVersion = 1, -- v2 (RFC 5755: AttCertVersion v2 = INTEGER 1)
              pciHolder = holder,
              pciIssuer = acIssuer,
              pciSignature = SignatureALG HashSHA384 PubKeyALG_RSA,
@@ -432,33 +435,47 @@ buildPlatformCertificateInfoWithValidityExt config components tpmInfo validity e
       ekSerialNum = certSerial ekCert         -- EK Certificate's serial number
       -- Create IssuerSerial referencing the EK Certificate
       issuerSerial = IssuerSerial [AltDirectoryName ekIssuerDN] ekSerialNum Nothing
-      -- Create Holder with baseCertificateID
-      holder = Holder (Just issuerSerial) Nothing Nothing
+      -- Create Holder with baseCertificateID. Delta generation can override this
+      -- to reference the base platform certificate instead of the EK certificate.
+      holder = case etaHolderBaseCertificateID extAttrs of
+        Just baseRef -> Holder (Just baseRef) Nothing Nothing
+        Nothing -> Holder (Just issuerSerial) Nothing Nothing
 
       cnOid = [2, 5, 4, 3]
       ouOid = [2, 5, 4, 11]
       oOid = [2, 5, 4, 10]
-      issuerDN = DistinguishedName
-        [ (cnOid, ASN1CharacterString UTF8 (B8.pack "TCG Platform Certificate Issuer"))
-        , (ouOid, ASN1CharacterString UTF8 (B8.pack "Platform Certificate Authority"))
-        , (oOid, ASN1CharacterString UTF8 (B8.pack "TCG Organization"))
-        ]
+      -- Use CA cert's subject DN if provided, otherwise fall back to hardcoded default
+      issuerDN = case etaIssuerDN extAttrs of
+        Just dn -> dn
+        Nothing -> DistinguishedName
+          [ (cnOid, ASN1CharacterString UTF8 (B8.pack "TCG Platform Certificate Issuer"))
+          , (ouOid, ASN1CharacterString UTF8 (B8.pack "Platform Certificate Authority"))
+          , (oOid, ASN1CharacterString UTF8 (B8.pack "TCG Organization"))
+          ]
       acIssuer = AttCertIssuerV2 (V2Form [AltDirectoryName issuerDN] Nothing Nothing)
 
   -- Create attributes from config, components, TPM info, and extended attributes
+      -- Use extensions from ExtendedTCGAttributes if provided, otherwise empty
+      extensions = case etaExtensions extAttrs of
+        Just ext -> ext
+        Nothing  -> Extensions Nothing
+
+      -- Certificate serial number: use override if provided, default to 1
+      serialNum = fromMaybe 1 (etaSerialNumber extAttrs)
+
   in case buildAttributesFromConfigExt config components tpmInfo extAttrs of
        Left err -> Left err
        Right attrs -> Right $
          PlatformCertificateInfo
-           { pciVersion = 2,
+           { pciVersion = 1, -- v2 (RFC 5755: AttCertVersion v2 = INTEGER 1)
              pciHolder = holder,
              pciIssuer = acIssuer,
              pciSignature = SignatureALG HashSHA384 PubKeyALG_RSA,
-             pciSerialNumber = 1,
+             pciSerialNumber = serialNum,
              pciValidity = validity,
              pciAttributes = attrs,
              pciIssuerUniqueID = Nothing,
-             pciExtensions = Extensions Nothing
+             pciExtensions = extensions
            }
 
 -- | Convert all ComponentIdentifiers to a single componentIdentifier_v2 attribute
@@ -511,11 +528,44 @@ encodeComponentIdentifierV2 comp =
   encodeComponentClass (ccv2Class comp) ++
   [ ASN1String (ASN1CharacterString UTF8 (ccv2Manufacturer comp))
   , ASN1String (ASN1CharacterString UTF8 (ccv2Model comp)) ] ++
+  -- [0] IMPLICIT UTF8String -- componentSerial
   (case ccv2Serial comp of
-    Just s -> [Other Context 0 s]  -- [0] IMPLICIT UTF8String
+    Just s -> [Other Context 0 s]
     Nothing -> []) ++
+  -- [1] IMPLICIT UTF8String -- componentRevision
   (case ccv2Revision comp of
-    Just r -> [Other Context 1 r]  -- [1] IMPLICIT UTF8String
+    Just r -> [Other Context 1 r]
+    Nothing -> []) ++
+  -- [2] IMPLICIT OBJECT IDENTIFIER -- manufacturerId
+  (case ccv2ManufacturerId comp of
+    Just oid -> [Other Context 2 (oidToContentBytes oid)]
+    Nothing -> []) ++
+  -- [3] IMPLICIT BOOLEAN -- fieldReplaceable
+  (case ccv2FieldReplaceable comp of
+    Just b -> [Other Context 3 (B.singleton (if b then 0xff else 0x00))]
+    Nothing -> []) ++
+  -- [4] IMPLICIT SEQUENCE OF ComponentAddress
+  (case ccv2Addresses comp of
+    Just addrs@(_:_) ->
+      [Start (Container Context 4)] ++
+      concatMap (\(oid, val) -> [Start Sequence, OID oid,
+        ASN1String (ASN1CharacterString UTF8 val), End Sequence]) addrs ++
+      [End (Container Context 4)]
+    _ -> []) ++
+  -- [5] IMPLICIT CertificateIdentifier
+  (case ccv2PlatformCert comp of
+    Just asn1s -> [Start (Container Context 5)] ++ asn1s ++ [End (Container Context 5)]
+    Nothing -> []) ++
+  -- [6] IMPLICIT URIReference
+  (case ccv2PlatformCertUri comp of
+    Just asn1s -> [Start (Container Context 6)] ++ asn1s ++ [End (Container Context 6)]
+    Nothing -> []) ++
+  -- [7] IMPLICIT ENUMERATED -- status (delta only)
+  (case ccv2Status comp of
+    Just ComponentAdded -> [Other Context 7 (B.singleton 0)]
+    Just ComponentModified -> [Other Context 7 (B.singleton 1)]
+    Just ComponentRemoved -> [Other Context 7 (B.singleton 2)]
+    Just ComponentUnchanged -> []
     Nothing -> []) ++
   [ End Sequence ]
 
@@ -527,19 +577,17 @@ encodeComponentIdentifierV2 comp =
 buildPlatformConfigurationV2Attr :: [ComponentConfigV2] -> Attribute
 buildPlatformConfigurationV2Attr [] =
   -- Even with no components, create the attribute with empty sequence
+  -- (encodeAttributeASN1 adds the outer SEQUENCE wrapper)
   Attribute tcg_at_platformConfiguration_v2
-    [[ Start Sequence
-     , Start (Container Context 0)  -- componentIdentifiers [0] IMPLICIT
+    [[ Start (Container Context 0)  -- componentIdentifiers [0] IMPLICIT
      , End (Container Context 0)
-     , End Sequence
      ]]
 buildPlatformConfigurationV2Attr components =
+  -- (encodeAttributeASN1 adds the outer SEQUENCE wrapper)
   Attribute tcg_at_platformConfiguration_v2
-    [[ Start Sequence
-     , Start (Container Context 0)  -- componentIdentifiers [0] IMPLICIT
+    [[ Start (Container Context 0)  -- componentIdentifiers [0] IMPLICIT
      ] ++ concatMap encodeComponentIdentifierV2 components ++
      [ End (Container Context 0)
-     , End Sequence
      ]]
 
 -- | TBB Security Assertions configuration (2.23.133.2.19)
@@ -572,8 +620,14 @@ data ComponentConfigV2 = ComponentConfigV2
   { ccv2Class :: B.ByteString                            -- Component class (4-byte value)
   , ccv2Manufacturer :: B.ByteString                     -- Component manufacturer
   , ccv2Model :: B.ByteString                            -- Component model
-  , ccv2Serial :: Maybe B.ByteString                     -- Component serial (optional)
-  , ccv2Revision :: Maybe B.ByteString                   -- Component revision (optional)
+  , ccv2Serial :: Maybe B.ByteString                     -- Component serial (optional, tag [0])
+  , ccv2Revision :: Maybe B.ByteString                   -- Component revision (optional, tag [1])
+  , ccv2ManufacturerId :: Maybe OID                      -- Manufacturer OID (optional, tag [2])
+  , ccv2FieldReplaceable :: Maybe Bool                   -- Field replaceable (optional, tag [3])
+  , ccv2Addresses :: Maybe [(OID, B.ByteString)]         -- Component addresses (optional, tag [4])
+  , ccv2PlatformCert :: Maybe [ASN1]                     -- CertificateIdentifier (optional, tag [5])
+  , ccv2PlatformCertUri :: Maybe [ASN1]                  -- URIReference (optional, tag [6])
+  , ccv2Status :: Maybe ComponentStatus                  -- Delta status (optional, tag [7])
   } deriving (Show, Eq)
 
 -- | Platform Config URI with optional hash for integrity verification
@@ -596,11 +650,18 @@ data ExtendedTCGAttributes = ExtendedTCGAttributes
   , etaPlatformSpecVersion :: Maybe (Int, Int, Int)      -- Platform Spec (major, minor, revision)
   , etaSecurityAssertions :: Maybe TBBSecurityAssertions -- TBB Security Assertions
   , etaComponentsV2 :: Maybe [ComponentConfigV2]         -- Component configs for platformConfiguration-v2
+  , etaCredentialTypeOid :: Maybe OID                    -- Override for tcg-at-tcgCredentialType OID
+  , etaHolderBaseCertificateID :: Maybe IssuerSerial     -- Optional holder baseCertificateID override
+  , etaExtensions :: Maybe Extensions                    -- Additional X.509 extensions (CertPolicies, AIA, CRL DP)
+  , etaIssuerDN :: Maybe DistinguishedName               -- Override issuer DN (from CA cert)
+  , etaSerialNumber :: Maybe Integer                     -- Certificate serial number override
+  , etaNotBefore :: Maybe DateTime                       -- Validity notBefore override
+  , etaNotAfter :: Maybe DateTime                        -- Validity notAfter override
   } deriving (Show, Eq)
 
 -- | Create default extended attributes (all Nothing)
 defaultExtendedTCGAttributes :: ExtendedTCGAttributes
-defaultExtendedTCGAttributes = ExtendedTCGAttributes Nothing Nothing Nothing Nothing Nothing Nothing
+defaultExtendedTCGAttributes = ExtendedTCGAttributes Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | Helper function to build attributes from configuration data
 buildAttributesFromConfig ::
@@ -635,7 +696,11 @@ buildAttributesFromConfigExt config components _tpmInfo extAttrs = do
       -- Create extended TCG attributes (includes platformConfiguration-v2 if etaComponentsV2 is set)
       extendedAttrs = buildExtendedTCGAttrs extAttrs
 
-  return $ Attributes ([manufacturerAttr, modelAttr, serialAttr, versionAttr] ++ componentAttrs ++ extendedAttrs)
+  return $ Attributes (
+    case etaComponentsV2 extAttrs of
+      Just _ -> extendedAttrs  -- V2/SAN path: platform info in SAN, no basic attrs in attributes
+      Nothing -> [manufacturerAttr, modelAttr, serialAttr, versionAttr] ++ componentAttrs ++ extendedAttrs
+    )
 
 -- | Build extended TCG attributes from configuration
 buildExtendedTCGAttrs :: ExtendedTCGAttributes -> [Attribute]
@@ -643,35 +708,35 @@ buildExtendedTCGAttrs extAttrs =
   let -- Platform Specification attribute (2.23.133.2.17)
       platSpecAttr = case etaPlatformSpecVersion extAttrs of
         Just (major, minor, rev) ->
-          [Attribute tcg_at_tcgPlatformSpecification
+          let classBytes = case etaPlatformClass extAttrs of
+                Just cb -> cb
+                Nothing -> B8.pack "\x00\x00\x00\x01" -- Default: Client platform class
+          in [Attribute tcg_at_tcgPlatformSpecification
             [[Start Sequence,
               IntVal (fromIntegral major),
               IntVal (fromIntegral minor),
               IntVal (fromIntegral rev),
-              -- Platform Class as OctetString if provided
-              case etaPlatformClass extAttrs of
-                Just classBytes -> OctetString classBytes
-                Nothing -> OctetString (B8.pack "\x00\x00\x00\x01"), -- Default: Client platform class
-              End Sequence]]]
+              End Sequence,
+              OctetString classBytes]]]
         Nothing -> []
 
       -- Credential Type attribute (2.23.133.2.25)
-      -- For Platform Certificate, use OID 2.23.133.8.2 (tcg-kp-PlatformAttributeCertificate)
+      -- Default: Platform OID 2.23.133.8.2 (tcg-kp-PlatformAttributeCertificate)
+      -- Delta generation may override this via etaCredentialTypeOid.
+      credTypeOid = case etaCredentialTypeOid extAttrs of
+        Just oid -> oid
+        Nothing -> tcg_kp_PlatformAttributeCertificate
       credTypeAttr =
         [Attribute tcg_at_tcgCredentialType
-          [[Start Sequence,
-            OID tcg_kp_PlatformAttributeCertificate,
-            End Sequence]]]
+          [[OID credTypeOid]]]
 
       -- Credential Specification attribute (2.23.133.2.23)
       credSpecAttr = case etaCredentialSpecVersion extAttrs of
         Just (major, minor, rev) ->
           [Attribute tcg_at_tcgCredentialSpecification
-            [[Start Sequence,
-              IntVal (fromIntegral major),
+            [[IntVal (fromIntegral major),
               IntVal (fromIntegral minor),
-              IntVal (fromIntegral rev),
-              End Sequence]]]
+              IntVal (fromIntegral rev)]]]
         Nothing -> []
 
       -- Platform Config URI attribute (2.23.133.5.1.3)
@@ -699,7 +764,7 @@ buildExtendedTCGAttrs extAttrs =
                 Just hashVal -> [BitString (toBitArray hashVal 0)]
                 Nothing -> []
           in [Attribute tcg_paa_platformConfigUri
-               [[Start Sequence] ++ uriASN1 ++ hashAlgASN1 ++ hashValueASN1 ++ [End Sequence]]]
+               [uriASN1 ++ hashAlgASN1 ++ hashValueASN1]]
         Nothing -> []
 
       -- TBB Security Assertions attribute (2.23.133.2.19)
@@ -712,13 +777,14 @@ buildExtendedTCGAttrs extAttrs =
       platformConfigV2Attr = case etaComponentsV2 extAttrs of
         Just comps -> [buildPlatformConfigurationV2Attr comps]
         Nothing -> []
-  in platSpecAttr ++ credTypeAttr ++ credSpecAttr ++ configUriAttr ++ securityAssertionsAttr ++ platformConfigV2Attr
+  -- IWG convention order: CredentialType → SecurityAssertions → PlatformSpec → PlatformConfigV2 → CredentialSpec → ConfigUri
+  in credTypeAttr ++ securityAssertionsAttr ++ platSpecAttr ++ platformConfigV2Attr ++ credSpecAttr ++ configUriAttr
 
 -- | Build TBB Security Assertions attribute
 buildTBBSecurityAssertionsAttr :: TBBSecurityAssertions -> Attribute
 buildTBBSecurityAssertionsAttr tbb =
-  let -- Version (INTEGER)
-      versionASN1 = [IntVal (fromIntegral (tbbVersion tbb))]
+  let -- Version (INTEGER) — per DER, omit when DEFAULT value (0)
+      versionASN1 = if tbbVersion tbb == 0 then [] else [IntVal (fromIntegral (tbbVersion tbb))]
 
       -- Common Criteria Measures (SEQUENCE) - OPTIONAL [0]
       -- Per TCG spec, EvaluationAssuranceLevel and EvaluationStatus are ENUMERATED
@@ -736,20 +802,20 @@ buildTBBSecurityAssertionsAttr tbb =
         (Just ccVer, Just eal) ->
           let baseContent =
                 [ Start (Container Context 0),
-                  Start Sequence,
+                  -- [0] IMPLICIT CommonCriteriaMeasures (SEQUENCE tag replaced by [0])
                   -- ccVersion (IA5String)
                   ASN1String (ASN1CharacterString IA5 ccVer),
                   -- assurancelevel (ENUMERATED - EvaluationAssuranceLevel)
                   Enumerated (fromIntegral eal),
-                  -- evaluationStatus (ENUMERATED - EvaluationStatus) OPTIONAL
+                  -- evaluationStatus (ENUMERATED - EvaluationStatus)
                   case tbbEvalStatus tbb of
                     Just status -> Enumerated (fromIntegral status)
-                    Nothing -> Enumerated 2, -- default: evaluationCompleted
-                  -- plus (BOOLEAN DEFAULT FALSE)
-                  case tbbPlus tbb of
-                    Just True -> Boolean True
-                    _ -> Boolean False
+                    Nothing -> Enumerated 2 -- default: evaluationCompleted
                 ]
+              -- plus (BOOLEAN DEFAULT FALSE) — per DER, omit when False
+              plusContent = case tbbPlus tbb of
+                Just True -> [Boolean True]
+                _ -> []
               -- strengthOfFunction [0] IMPLICIT StrengthOfFunction OPTIONAL
               sofContent = case tbbStrengthOfFunction tbb of
                 Just sof -> [Other Context 0 (B.singleton (fromIntegral sof))]
@@ -770,26 +836,25 @@ buildTBBSecurityAssertionsAttr tbb =
               stUriContent = case tbbSecurityTargetURI tbb of
                 Just uri -> [Start (Container Context 4), ASN1String (ASN1CharacterString IA5 uri), End (Container Context 4)]
                 Nothing -> []
-              endContent = [End Sequence, End (Container Context 0)]
-          in [baseContent ++ sofContent ++ ppOidContent ++ ppUriContent ++ stOidContent ++ stUriContent ++ endContent]
+              endContent = [End (Container Context 0)]
+          in [baseContent ++ plusContent ++ sofContent ++ ppOidContent ++ ppUriContent ++ stOidContent ++ stUriContent ++ endContent]
         _ -> []
 
       -- FIPS Level (SEQUENCE) - OPTIONAL [1]
       -- Per TCG spec, SecurityLevel is ENUMERATED
       fipsLevel = case (tbbFIPSVersion tbb, tbbFIPSSecurityLevel tbb) of
         (Just fipsVer, Just level) ->
-          [[Start (Container Context 1),
-            Start Sequence,
-            -- fipsVersion (IA5String)
-            ASN1String (ASN1CharacterString IA5 fipsVer),
-            -- level (ENUMERATED - SecurityLevel)
-            Enumerated (fromIntegral level),
-            -- plus (BOOLEAN DEFAULT FALSE)
-            case tbbFIPSPlus tbb of
-              Just True -> Boolean True
-              _ -> Boolean False,
-            End Sequence,
-            End (Container Context 1)]]
+          let fipsPlusContent = case tbbFIPSPlus tbb of
+                Just True -> [Boolean True]
+                _ -> []  -- DER DEFAULT FALSE: omit when False
+          in [[ Start (Container Context 1),
+                -- [1] IMPLICIT FIPSLevel (SEQUENCE tag replaced by [1])
+                -- fipsVersion (IA5String)
+                ASN1String (ASN1CharacterString IA5 fipsVer),
+                -- level (ENUMERATED - SecurityLevel)
+                Enumerated (fromIntegral level)
+              ] ++ fipsPlusContent ++
+              [ End (Container Context 1) ]]
         _ -> []
 
       -- RTM Type (ENUMERATED) - OPTIONAL [2] IMPLICIT
@@ -799,24 +864,23 @@ buildTBBSecurityAssertionsAttr tbb =
         Just rtm -> [[Other Context 2 (B.singleton (fromIntegral rtm))]]
         Nothing -> []
 
-      -- ISO 9000 Certified (BOOLEAN) - DEFAULT FALSE
+      -- ISO 9000 Certified (BOOLEAN) - DEFAULT FALSE — per DER, omit when False
       iso9000Certified = case tbbISO9000Certified tbb of
         Just True -> [[Boolean True]]
-        _ -> [[Boolean False]]
+        _ -> []
 
       -- ISO 9000 URI (IA5String) - OPTIONAL
       iso9000Uri = case tbbISO9000URI tbb of
         Just uri -> [[ASN1String (ASN1CharacterString IA5 uri)]]
         Nothing -> []
 
-      -- Combine all fields into a SEQUENCE
-      tbbContent = [Start Sequence] ++ versionASN1
+      -- Combine all fields (encodeAttributeASN1 adds the outer SEQUENCE wrapper)
+      tbbContent = versionASN1
                    ++ concat ccMeasures
                    ++ concat fipsLevel
                    ++ concat rtmTypeASN1
                    ++ concat iso9000Certified
                    ++ concat iso9000Uri
-                   ++ [End Sequence]
 
   in Attribute tcg_at_tbbSecurityAssertions [tbbContent]
 
@@ -864,9 +928,9 @@ mkPlatformCertificate config components tpmInfo ekCert validity auth (algS, _pub
     Left err -> return $ Left err
     Right certInfo -> do
       -- Apply authority settings to the certificate
-      let finalCertInfo = certInfo
-          signingKey = foldAuthPriv privKey pairKey auth
+      let signingKey = foldAuthPriv privKey pairKey auth
           algI = foldAuthPubPriv algS pairAlg auth
+          finalCertInfo = certInfo { pciSignature = getSignatureALG algI }
           signatureFunction objRaw = do
             sigBits <- doSign algI signingKey objRaw
             return (sigBits, getSignatureALG algI)
@@ -916,11 +980,12 @@ mkPlatformCertificateExt config components tpmInfo ekCert validity auth (algS, _
     Right certInfo -> do
       let signingKey = foldAuthPriv privKey pairKey auth
           algI = foldAuthPubPriv algS pairAlg auth
+          finalCertInfo = certInfo { pciSignature = getSignatureALG algI }
           signatureFunction objRaw = do
             sigBits <- doSign algI signingKey objRaw
             return (sigBits, getSignatureALG algI)
 
-      signedCert <- objectToSignedExactF signatureFunction certInfo
+      signedCert <- objectToSignedExactF signatureFunction finalCertInfo
       return $
         Right
           Pair
@@ -986,7 +1051,7 @@ createDeltaPlatformCertificate baseCert componentDeltas changeRecords = do
   -- Create Delta Platform Certificate Info
   let deltaCertInfo =
         DeltaPlatformCertificateInfo
-          { dpciVersion = 2,
+          { dpciVersion = 1, -- v2 (RFC 5755: AttCertVersion v2 = INTEGER 1)
             dpciHolder = pciHolder baseCertInfo, -- Same holder as base
             dpciIssuer = baseIssuer,
             dpciSignature = SignatureALG HashSHA384 PubKeyALG_RSA, -- Default signature
@@ -1249,3 +1314,20 @@ validateChainValidity chain =
 
 extractPresentOIDs :: Attributes -> [OID]
 extractPresentOIDs (Attributes attrs) = map attrType attrs
+
+-- | Encode an OID to DER content bytes (without tag/length wrapper).
+-- First two components encoded as 40*a+b, remaining use base-128 VLQ.
+oidToContentBytes :: OID -> B.ByteString
+oidToContentBytes [] = B.empty
+oidToContentBytes [x] = B.singleton (fromIntegral (40 * x))
+oidToContentBytes (x:y:rest) =
+  B.pack $ fromIntegral (40 * x + y) : concatMap encodeSubId rest
+  where
+    encodeSubId :: Integer -> [Word8]
+    encodeSubId n
+      | n < 128   = [fromIntegral n]
+      | otherwise = encodeVLQ (n `div` 128) [fromIntegral (n `mod` 128)]
+    -- Build VLQ bytes MSB-first: all prepended bytes get continuation bit (+128)
+    encodeVLQ :: Integer -> [Word8] -> [Word8]
+    encodeVLQ 0 acc = acc
+    encodeVLQ n acc = encodeVLQ (n `div` 128) (fromIntegral (n `mod` 128 + 128) : acc)

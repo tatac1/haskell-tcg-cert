@@ -103,7 +103,7 @@ createPlatformCertificate holder certIssuer validity config additionalAttrs = do
       -- Build the certificate info structure
       let certInfo =
             PlatformCertificateInfo
-              { pciVersion = 2, -- v2 certificate
+              { pciVersion = 1, -- v2 (RFC 5755: AttCertVersion v2 = INTEGER 1)
                 pciHolder = holder,
                 pciIssuer = certIssuer,
                 pciSignature = SignatureALG HashSHA384 PubKeyALG_RSA,
@@ -152,7 +152,7 @@ createSignedPlatformCertificate holder certIssuer validity config additionalAttr
           -- Build the certificate info structure
           let certInfo =
                 PlatformCertificateInfo
-                  { pciVersion = 2, -- v2 certificate
+                  { pciVersion = 1, -- v2 (RFC 5755: AttCertVersion v2 = INTEGER 1)
                     pciHolder = holder,
                     pciIssuer = certIssuer,
                     pciSignature = sigAlg,
@@ -224,7 +224,7 @@ createDeltaPlatformCertificate holder deltaIssuer validity baseRef configDelta =
       -- Build the Delta Platform Certificate Info structure
       let deltaCertInfo =
             DeltaPlatformCertificateInfo
-              { dpciVersion = 2, -- v2 certificate
+              { dpciVersion = 1, -- v2 (RFC 5755: AttCertVersion v2 = INTEGER 1)
                 dpciHolder = holder,
                 dpciIssuer = deltaIssuer,
                 dpciSignature = SignatureALG HashSHA384 PubKeyALG_RSA,
@@ -292,7 +292,7 @@ createSignedDeltaPlatformCertificate holder certIssuer validity baseRef configDe
           -- Build the Delta Platform Certificate Info structure
           let deltaCertInfo =
                 DeltaPlatformCertificateInfo
-                  { dpciVersion = 2, -- v2 certificate
+                  { dpciVersion = 1, -- v2 (RFC 5755: AttCertVersion v2 = INTEGER 1)
                     dpciHolder = holder,
                     dpciIssuer = certIssuer,
                     dpciSignature = sigAlg,
@@ -830,7 +830,7 @@ extractIssuerDN (AttCertIssuerV1 generalNames) =
     Just dn -> dn
     Nothing -> DistinguishedName [] -- Fallback if no DirectoryName found
 extractIssuerDN (AttCertIssuerV2 v2form) =
-  case v2fromBaseCertificateID v2form of
+  case v2formBaseCertificateID v2form of
     Just issuerSerial ->
       -- When baseCertificateID is present, extract issuer from the IssuerSerial
       -- The IssuerSerial contains GeneralNames for the issuer
@@ -840,7 +840,7 @@ extractIssuerDN (AttCertIssuerV2 v2form) =
     Nothing ->
       -- No baseCertificateID, issuer name should be in issuerName (GeneralNames)
       -- Extract DirectoryName from the GeneralNames in issuerName
-      case extractDirectoryNameFromGeneralNames (v2fromIssuerName v2form) of
+      case extractDirectoryNameFromGeneralNames (v2formIssuerName v2form) of
         Just dn -> dn
         Nothing -> DistinguishedName []
 

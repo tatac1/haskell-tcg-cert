@@ -68,8 +68,8 @@ import qualified Data.ByteString as B
 import Data.Hourglass (DateTime)
 import Data.List (find)
 import Data.X509 (DistinguishedName, Extensions (..), SignatureALG, SignedExact, decodeSignedObject, encodeSignedObject, getSigned, signedObject)
-import Data.X509.AttCert (AttCertIssuer, AttCertValidityPeriod, Holder, UniqueID)
-import Data.X509.Attribute (Attribute (..), Attributes (..), attrType, attrValues)
+import Data.X509.AttCert (AttCertIssuer(..), AttCertValidityPeriod, Holder, UniqueID, V2Form(..))
+import Data.X509.Attribute (Attribute (..), Attributes (..), attrType, attrValues, encodeGeneralName)
 import Data.X509.TCG.Component (ComponentIdentifier, ComponentIdentifierV2)
 import Data.X509.TCG.OID (tcg_at_componentIdentifier_v2, tcg_at_platformConfiguration_v2, tcg_at_tpmSpecification, tcg_at_tpmVersion)
 import Data.X509.TCG.Platform (ComponentStatus (..), PlatformConfigurationV2 (..))
@@ -95,21 +95,24 @@ data DeltaPlatformCertificateInfo = DeltaPlatformCertificateInfo
 -- | ASN1Object instance for DeltaPlatformCertificateInfo
 instance ASN1Object DeltaPlatformCertificateInfo where
   toASN1 (DeltaPlatformCertificateInfo dciVer dciHolder dciIssuer dciSig dciSn dciValid dciAttrs dciUid dciExts dciBase) xs =
-    ( [Start Sequence]
-        ++ [IntVal $ fromIntegral dciVer]
-        ++ toASN1 dciHolder []
-        ++ toASN1 dciIssuer []
-        ++ toASN1 dciSig []
-        ++ [IntVal dciSn]
-        ++ toASN1 dciValid []
-        ++ toASN1 dciAttrs []
-        ++ maybe [] (\u -> [BitString u]) dciUid
-        ++ toASN1 dciExts []
-        ++ toASN1 dciBase []
-        ++ [End Sequence]
-    )
+    [IntVal $ fromIntegral dciVer]
+      ++ toASN1 dciHolder []
+      ++ encodeIssuerCompat dciIssuer
+      ++ toASN1 dciSig []
+      ++ [IntVal dciSn]
+      ++ toASN1 dciValid []
+      ++ toASN1 dciAttrs []
+      ++ maybe [] (\u -> [BitString u]) dciUid
+      ++ toASN1 dciExts []
+      ++ toASN1 dciBase []
       ++ xs
-  fromASN1 (Start Sequence : IntVal ver : rest) = do
+  fromASN1 [] = Left "DeltaPlatformCertificateInfo: empty input"
+  fromASN1 (Start Sequence : IntVal ver : rest) = parseDCIContent ver rest True
+  fromASN1 (IntVal ver : rest) = parseDCIContent ver rest False
+  fromASN1 _ = Left "DeltaPlatformCertificateInfo: Invalid ASN1 structure"
+
+parseDCIContent :: Integer -> [ASN1] -> Bool -> Either String (DeltaPlatformCertificateInfo, [ASN1])
+parseDCIContent ver rest hasOuterSequence = do
     (holder, rest1) <- fromASN1 rest
     (issuer, rest2) <- fromASN1 rest1
     (signature, rest3) <- fromASN1 rest2
@@ -120,12 +123,20 @@ instance ASN1Object DeltaPlatformCertificateInfo where
         let (uid, rest7) = extractUID rest6
             (extensions, rest8) = extractExtensions rest7
         (baseRef, rest9) <- fromASN1 rest8
-        case rest9 of
-          (End Sequence : remaining) ->
-            Right (DeltaPlatformCertificateInfo (fromIntegral ver) holder issuer signature serialNum validity attributes uid extensions baseRef, remaining)
-          _ -> Left "DeltaPlatformCertificateInfo: Invalid ASN1 sequence termination"
+        if hasOuterSequence
+          then case rest9 of
+            (End Sequence : remaining) ->
+              Right (DeltaPlatformCertificateInfo (fromIntegral ver) holder issuer signature serialNum validity attributes uid extensions baseRef, remaining)
+            _ -> Left "DeltaPlatformCertificateInfo: Invalid ASN1 sequence termination"
+          else Right (DeltaPlatformCertificateInfo (fromIntegral ver) holder issuer signature serialNum validity attributes uid extensions baseRef, rest9)
       _ -> Left "DeltaPlatformCertificateInfo: Missing serial number"
-  fromASN1 _ = Left "DeltaPlatformCertificateInfo: Invalid ASN1 structure"
+
+encodeIssuerCompat :: AttCertIssuer -> [ASN1]
+encodeIssuerCompat (AttCertIssuerV2 (V2Form issuerNames Nothing Nothing)) =
+  [Start (Container Context 0), Start Sequence]
+    ++ concatMap encodeGeneralName issuerNames
+    ++ [End Sequence, End (Container Context 0)]
+encodeIssuerCompat issuer = toASN1 issuer []
 
 -- Helper functions for ASN.1 parsing
 extractUID :: [ASN1] -> (Maybe UniqueID, [ASN1])

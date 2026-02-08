@@ -56,7 +56,7 @@ import Data.ASN1.BinaryEncoding (DER(..))
 import qualified Data.ByteString as B
 import Control.Applicative ((<|>))
 import Data.X509 (Extensions(..), SignatureALG, SignedExact, decodeSignedObject, encodeSignedObject, getSigned, signedObject)
-import Data.X509.AttCert (AttCertIssuer, AttCertValidityPeriod, Holder, UniqueID)
+import Data.X509.AttCert (AttCertIssuer(..), AttCertValidityPeriod, Holder, UniqueID)
 import Data.X509.Attribute (Attribute(..), AttributeValue, Attributes(..))
 import Data.X509.TCG.Component (ComponentIdentifier, ComponentIdentifierV2)
 import Data.X509.TCG.OID
@@ -100,18 +100,15 @@ data PlatformCertificateInfo = PlatformCertificateInfo
 -- | ASN1Object instance for PlatformCertificateInfo
 instance ASN1Object PlatformCertificateInfo where
   toASN1 (PlatformCertificateInfo pciVer pciHolder' pciIssuer' pciSig pciSn pciValid pciAttrs pciUid pciExts) xs =
-    ( [Start Sequence]
-        ++ [IntVal $ fromIntegral pciVer]
-        ++ toASN1 pciHolder' []
-        ++ toASN1 pciIssuer' []
-        ++ toASN1 pciSig []
-        ++ [IntVal pciSn]
-        ++ toASN1 pciValid []
-        ++ toASN1 pciAttrs []
-        ++ maybe [] (\u -> [BitString u]) pciUid
-        ++ toASN1 pciExts []
-        ++ [End Sequence]
-    )
+    [IntVal $ fromIntegral pciVer]
+      ++ toASN1 pciHolder' []
+      ++ toASN1 pciIssuer' []
+      ++ toASN1 pciSig []
+      ++ [IntVal pciSn]
+      ++ toASN1 pciValid []
+      ++ toASN1 pciAttrs []
+      ++ maybe [] (\u -> [BitString u]) pciUid
+      ++ toASN1 pciExts []
       ++ xs
   -- Note: decodeSignedObject strips the outer SEQUENCE before calling fromASN1.
   -- For direct fromASN1 calls (e.g., property tests), the SEQUENCE is present.

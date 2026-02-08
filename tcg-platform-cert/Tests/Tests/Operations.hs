@@ -293,7 +293,7 @@ tests =
               Right cert -> do
                 -- Verify the certificate was created
                 let certInfo = TCG.getPlatformCertificate cert
-                pciVersion certInfo @?= 2
+                pciVersion certInfo @?= 1
                 pciSerialNumber certInfo @?= 1,
           testCase "createPlatformCertificate extracts platform info correctly" $ do
             -- Create test EK certificate
@@ -358,7 +358,7 @@ tests =
                 -- Verify the certificate was created successfully
                 let cert = TCG.pairSignedCert pair
                     certInfo = TCG.getPlatformCertificate cert
-                TCG.pciVersion certInfo @?= 2
+                TCG.pciVersion certInfo @?= 1
                 TCG.pciSerialNumber certInfo @?= 1
 
                 -- Verify we can extract platform info
@@ -413,7 +413,7 @@ tests =
                   Right deltaCert -> do
                     -- Verify the delta certificate was created successfully
                     let deltaInfo = TCG.getDeltaPlatformCertificate deltaCert
-                    TCG.dpciVersion deltaInfo @?= 2
+                    TCG.dpciVersion deltaInfo @?= 1
                     -- Delta serial should be base serial + 1
                     let baseInfo = TCG.getPlatformCertificate baseCert
                         baseSerial = TCG.pciSerialNumber baseInfo
@@ -452,7 +452,7 @@ tests =
                 -- Verify the certificate was created successfully
                 let cert = TCG.pairSignedCert pair
                     certInfo = TCG.getPlatformCertificate cert
-                TCG.pciVersion certInfo @?= 2
+                TCG.pciVersion certInfo @?= 1
                 TCG.pciSerialNumber certInfo @?= 1
 
                 -- Verify we can extract platform info
@@ -496,7 +496,7 @@ tests =
               Right cert -> do
                 -- Verify the certificate was created
                 let certInfo = getPlatformCertificate cert
-                pciVersion certInfo @?= 2
+                pciVersion certInfo @?= 1
                 pciSerialNumber certInfo @?= 1,
           testCase "createPlatformCertificate includes platform attributes" $ do
             -- Create platform configuration with specific values
@@ -580,7 +580,7 @@ tests =
               Right cert -> do
                 -- Verify the certificate was created
                 let certInfo = getDeltaPlatformCertificate cert
-                dpciVersion certInfo @?= 2
+                dpciVersion certInfo @?= 1
                 dpciSerialNumber certInfo @?= 101 -- base + 1
                 dpciBaseCertificateRef certInfo @?= baseRef,
           testCase "createDeltaPlatformCertificate includes delta attributes" $ do
@@ -630,7 +630,7 @@ tests =
                 let certInfo = getDeltaPlatformCertificate cert
                     attrs = dpciAttributes certInfo
 
-                dpciVersion certInfo @?= 2
+                dpciVersion certInfo @?= 1
                 dpciSerialNumber certInfo @?= 201 -- base + 1
 
                 -- Check that attributes are present (should contain delta info)
@@ -692,7 +692,7 @@ tests =
               Right signedDelta -> do
                 let deltaInfo = getDeltaPlatformCertificate signedDelta
                 -- Verify that delta certificate contains expected information
-                dpciVersion deltaInfo @?= 2
+                dpciVersion deltaInfo @?= 1
                 dpciHolder deltaInfo @?= holder
                 dpciIssuer deltaInfo @?= issuer
                 dpciSerialNumber deltaInfo @?= 12346 -- base + 1
