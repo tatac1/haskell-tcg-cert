@@ -535,7 +535,7 @@ extractIssuerDNFromAttCertIssuer (AttCertIssuerV1 generalNames) =
   -- V1 form is deprecated but we can still extract DirectoryName if present
   extractDirectoryNameFromGeneralNames generalNames
 extractIssuerDNFromAttCertIssuer (AttCertIssuerV2 v2form) = 
-  case v2fromBaseCertificateID v2form of
+  case v2formBaseCertificateID v2form of
     Just issuerSerial -> 
       -- When baseCertificateID is present, extract issuer from the IssuerSerial
       -- The IssuerSerial contains GeneralNames for the issuer
@@ -543,7 +543,7 @@ extractIssuerDNFromAttCertIssuer (AttCertIssuerV2 v2form) =
     Nothing -> 
       -- No baseCertificateID, issuer name should be in issuerName (GeneralNames)
       -- Extract DirectoryName from the GeneralNames in issuerName
-      extractDirectoryNameFromGeneralNames (v2fromIssuerName v2form)
+      extractDirectoryNameFromGeneralNames (v2formIssuerName v2form)
 
 -- | Extract DistinguishedName from GeneralNames by looking for AltDirectoryName
 -- Returns the first DirectoryName found in the GeneralNames list, or Nothing if none found
