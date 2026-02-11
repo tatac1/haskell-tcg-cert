@@ -70,6 +70,8 @@ test-suite test-tcg-platform-cert-compliance
         SuggestionSpec
         ChainComplianceSpec
         ComplianceCheckSpec
+        FuzzerSpec
+        PaccorSpec
     build-depends:
         base >= 4.9 && < 5
       , bytestring
@@ -78,6 +80,8 @@ test-suite test-tcg-platform-cert-compliance
       , time
       , time-hourglass
       , directory
+      , filepath
+      , process
       , pem
       , tasty
       , tasty-hunit

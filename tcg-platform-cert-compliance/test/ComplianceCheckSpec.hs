@@ -3,7 +3,17 @@
 -- | Per-check unit tests for all 66 IWG compliance checks.
 -- Each check is tested with synthetic certificates constructed in-memory,
 -- verifying both PASS and FAIL (or SKIP) paths where applicable.
-module ComplianceCheckSpec (tests) where
+module ComplianceCheckSpec
+  ( tests
+  -- Cert building helpers (shared with FuzzerSpec)
+  , dummySign, buildCert, mkCert, mkHolder, mkValidity, testIssuer
+  , mkSanExtension, mkCertPoliciesExtension, mkAkiExtension
+  , mkPlatformConfigV2Attr, mkTcgPlatformSpecAttr
+  , mkTcgCredentialTypeBaseAttr, mkTcgCredentialSpecAttr
+  , mkTbbSecAttr, mkTbbSecAttrFull, mkTbbSecAttrWithSOF
+  , defaultSan, defaultComp, CompSpec(..), encodeComponentV2
+  , assertPass, assertFail, assertSkip
+  ) where
 
 import Test.Tasty
 import Test.Tasty.HUnit

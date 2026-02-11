@@ -12,17 +12,20 @@ import qualified ComplianceGuideSpec
 import qualified SuggestionSpec
 import qualified ChainComplianceSpec
 import qualified ComplianceCheckSpec
+import qualified FuzzerSpec
+import qualified PaccorSpec
 
 main :: IO ()
-main = defaultMain tests
-
-tests :: TestTree
-tests = testGroup "TCG Platform Cert Compliance Tests"
-  [ ComplianceSpec.tests
-  , EndToEndSpec.tests
-  , SBVProofs.tests
-  , ComplianceGuideSpec.tests
-  , SuggestionSpec.tests
-  , ChainComplianceSpec.tests
-  , ComplianceCheckSpec.tests
-  ]
+main = do
+  paccorTests <- PaccorSpec.tests
+  defaultMain $ testGroup "TCG Platform Cert Compliance Tests"
+    [ ComplianceSpec.tests
+    , EndToEndSpec.tests
+    , SBVProofs.tests
+    , ComplianceGuideSpec.tests
+    , SuggestionSpec.tests
+    , ChainComplianceSpec.tests
+    , ComplianceCheckSpec.tests
+    , FuzzerSpec.tests
+    , paccorTests
+    ]
