@@ -21,7 +21,7 @@ module Data.HardwareInfo.Linux
   , getLinuxNetworkInterfaces
   ) where
 
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (MonadIO)
 import qualified Data.ByteString as BS
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -224,10 +224,10 @@ getLinuxPlatformInfo = do
   productFamily <- readDmiId "product_family"
 
   case (sysVendor, productName) of
-    (Right vendor, Right name) ->
+    (Right vendor, Right prodName) ->
       return $ Right PlatformInfo
         { platformManufacturer = vendor
-        , platformModel = name
+        , platformModel = prodName
         , platformVersion = either (const "") id productVersion
         , platformSerial = either (const Nothing) Just productSerial
         , platformUUID = either (const Nothing) Just productUUID
