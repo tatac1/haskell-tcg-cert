@@ -157,13 +157,19 @@ genIA5String = B.pack <$> listOf1 (choose ('0', '9'))
 instance Arbitrary TBBSecurityAssertions where
   arbitrary = do
     ver     <- elements [0, 1]
-    ccVer   <- oneof [pure Nothing, Just <$> genIA5String]
-    eal     <- oneof [pure Nothing, Just <$> choose (1, 7)]
+    -- CC fields: ccVersion and EAL must be paired (both present or both absent)
+    (ccVer, eal) <- oneof
+      [ pure (Nothing, Nothing)
+      , do v <- genIA5String; e <- choose (1, 7); return (Just v, Just e)
+      ]
     evalSt  <- oneof [pure Nothing, Just <$> choose (0, 2)]
     plus'   <- oneof [pure Nothing, Just <$> arbitrary]
     sof     <- oneof [pure Nothing, Just <$> choose (0, 2)]
-    fipsVer <- oneof [pure Nothing, Just <$> genIA5String]
-    fipsLvl <- oneof [pure Nothing, Just <$> choose (1, 4)]
+    -- FIPS fields: fipsVersion and fipsLevel must be paired
+    (fipsVer, fipsLvl) <- oneof
+      [ pure (Nothing, Nothing)
+      , do v <- genIA5String; l <- choose (1, 4); return (Just v, Just l)
+      ]
     fipsP   <- oneof [pure Nothing, Just <$> arbitrary]
     rtm     <- oneof [pure Nothing, Just <$> choose (0, 3)]
     iso     <- oneof [pure Nothing, Just <$> arbitrary]

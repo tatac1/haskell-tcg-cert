@@ -60,6 +60,7 @@ library
     , Data.X509.TCG.Validation
     , Data.X509.TCG.Utils
     , Data.X509.TCG
+    , Data.X509.TCG.InputValidation
     , Data.X509.TCG.Certification
 
   hs-source-dirs: .
@@ -84,6 +85,7 @@ test-suite test-tcg-platform-cert
     , Tests.Arbitrary
     , Tests.SBV
     , Tests.GoldenASN1
+    , Tests.InputValidation
 
   build-depends:
       tcg-platform-cert
