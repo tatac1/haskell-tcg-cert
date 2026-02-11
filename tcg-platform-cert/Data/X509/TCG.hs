@@ -170,39 +170,56 @@ import Data.X509.TCG.Platform
 -- This relates the typed hash algorithm @hash@ to the 'HashALG' value.
 data GHash hash = GHash {getHashALG :: HashALG, getHashAlgorithm :: hash}
 
+-- | SHA-256 hash algorithm for use with 'Alg' constructors.
 hashSHA256 :: GHash SHA256
 hashSHA256 = GHash HashSHA256 SHA256
 
+-- | SHA-384 hash algorithm for use with 'Alg' constructors.
 hashSHA384 :: GHash SHA384
 hashSHA384 = GHash HashSHA384 SHA384
 
+-- | SHA-512 hash algorithm for use with 'Alg' constructors.
 hashSHA512 :: GHash SHA512
 hashSHA512 = GHash HashSHA512 SHA512
 
 -- | Signature and hash algorithms instantiated with parameters for Platform Certificates.
+--
+-- Each constructor pairs a key type with its signing parameters.
+-- Use 'generateKeys' to create key pairs for a given algorithm.
+--
+-- @
+-- keys <- 'generateKeys' ('AlgRSA' 2048 'hashSHA256')
+-- cert <- 'mkPlatformCertificate' config comps tpm ek validity 'Self' keys \"sha256\"
+-- @
 data Alg pub priv where
+  -- | RSA PKCS#1 v1.5 with the specified key size (in bits) and hash algorithm.
   AlgRSA ::
     (HashAlgorithm hash, RSA.HashAlgorithmASN1 hash) =>
     Int ->
     GHash hash ->
     Alg RSA.PublicKey RSA.PrivateKey
+  -- | RSA-PSS with the specified key size, PSS parameters, and hash algorithm.
   AlgRSAPSS ::
     (HashAlgorithm hash) =>
     Int ->
     PSS.PSSParams hash B.ByteString B.ByteString ->
     GHash hash ->
     Alg RSA.PublicKey RSA.PrivateKey
+  -- | DSA with the specified domain parameters and hash algorithm.
   AlgDSA ::
     (HashAlgorithm hash) =>
     DSA.Params ->
     GHash hash ->
     Alg DSA.PublicKey DSA.PrivateKey
+  -- | ECDSA with the specified named curve and hash algorithm.
   AlgEC ::
     (HashAlgorithm hash) =>
     ECC.CurveName ->
     GHash hash ->
     Alg ECDSA.PublicKey ECDSA.PrivateKey
+  -- | Ed25519 (Edwards-curve Digital Signature Algorithm, 128-bit security).
   AlgEd25519 :: Alg Ed25519.PublicKey Ed25519.SecretKey
+  -- | Ed448 (Edwards-curve Digital Signature Algorithm, 224-bit security).
   AlgEd448 :: Alg Ed448.PublicKey Ed448.SecretKey
 
 -- | Types of public and private keys used by a signature algorithm.
@@ -286,11 +303,14 @@ doSign AlgEd448 key msg =
 -- | Holds together a Platform certificate and its private key for convenience.
 --
 -- Contains also the crypto algorithm that both are issued from.  This is
--- useful when signing another certificate.
+-- useful when signing another certificate as a CA via 'Auth'.
 data Pair pub priv = Pair
-  { pairAlg :: Alg pub priv,
-    pairSignedCert :: SignedPlatformCertificate,
-    pairKey :: priv
+  { pairAlg :: Alg pub priv
+    -- ^ The signature algorithm used to create this certificate.
+  , pairSignedCert :: SignedPlatformCertificate
+    -- ^ The signed Platform Certificate.
+  , pairKey :: priv
+    -- ^ The private key corresponding to the certificate's public key.
   }
 
 -- | Authority signing a Platform certificate, itself or another certificate.
@@ -299,7 +319,9 @@ data Pair pub priv = Pair
 -- they have identical signature algorithms.  The purpose of the GADT is to
 -- hold this constraint only in the self-signed case.
 data Auth pubI privI pubS privS where
+  -- | Self-signed: the issuer and subject share the same key pair.
   Self :: (pubI ~ pubS, privI ~ privS) => Auth pubI privI pubS privS
+  -- | CA-signed: the certificate is signed by a CA whose 'Pair' is provided.
   CA :: Pair pubI privI -> Auth pubI privI pubS privS
 
 foldAuthPriv ::
@@ -597,73 +619,133 @@ buildPlatformConfigurationV2Attr components =
      [ End (Container Context 0)
      ]]
 
--- | TBB Security Assertions configuration (2.23.133.2.19)
+-- | TBB (Trusted Building Block) Security Assertions configuration.
+--
+-- Represents the @tBBSecurityAssertions@ attribute (OID 2.23.133.2.19) which
+-- encodes Common Criteria, FIPS 140, and other security certifications
+-- as defined in TCG PCP v2.1 §3.1.4.
 data TBBSecurityAssertions = TBBSecurityAssertions
-  { tbbVersion :: Int                                    -- Version (default: 0)
-  -- Common Criteria
-  , tbbCCVersion :: Maybe B.ByteString                   -- CC Version (e.g., "3.1")
-  , tbbEvalAssuranceLevel :: Maybe Int                   -- EAL1-7
-  , tbbEvalStatus :: Maybe Int                           -- 0=inProgress, 1=completed
-  , tbbPlus :: Maybe Bool                                -- Plus indicator
-  , tbbStrengthOfFunction :: Maybe Int                   -- 0=basic, 1=medium, 2=high
-  , tbbProtectionProfileOID :: Maybe B.ByteString        -- Protection Profile OID
-  , tbbProtectionProfileURI :: Maybe B.ByteString        -- Protection Profile URI
-  , tbbSecurityTargetOID :: Maybe B.ByteString           -- Security Target OID
-  , tbbSecurityTargetURI :: Maybe B.ByteString           -- Security Target URI
-  -- FIPS Level
-  , tbbFIPSVersion :: Maybe B.ByteString                 -- FIPS version (e.g., "140-2")
-  , tbbFIPSSecurityLevel :: Maybe Int                    -- Security Level 1-4
-  , tbbFIPSPlus :: Maybe Bool                            -- FIPS Plus indicator
-  -- RTM Type
-  , tbbRTMType :: Maybe Int                              -- 0=static, 1=dynamic, 2=nonHosted, 3=hybrid
-  -- ISO 9000
-  , tbbISO9000Certified :: Maybe Bool                    -- ISO 9000 Certified
-  , tbbISO9000URI :: Maybe B.ByteString                  -- ISO 9000 URI
+  { tbbVersion :: Int
+    -- ^ Assertion version number (DEFAULT 0, omitted in DER when 0).
+  , tbbCCVersion :: Maybe B.ByteString
+    -- ^ Common Criteria version string (e.g., @\"3.1\"@). IA5String.
+  , tbbEvalAssuranceLevel :: Maybe Int
+    -- ^ Evaluation Assurance Level: 1–7 corresponding to EAL1–EAL7.
+  , tbbEvalStatus :: Maybe Int
+    -- ^ Evaluation status: 0 = designedToMeet, 1 = evaluationInProgress, 2 = evaluationCompleted.
+  , tbbPlus :: Maybe Bool
+    -- ^ Common Criteria \"plus\" augmentation indicator (DEFAULT FALSE, omitted when False).
+  , tbbStrengthOfFunction :: Maybe Int
+    -- ^ Strength of function: 0 = basic, 1 = medium, 2 = high.
+  , tbbProtectionProfileOID :: Maybe B.ByteString
+    -- ^ Protection Profile OID, DER-encoded content bytes.
+  , tbbProtectionProfileURI :: Maybe B.ByteString
+    -- ^ Protection Profile URI (IA5String).
+  , tbbSecurityTargetOID :: Maybe B.ByteString
+    -- ^ Security Target OID, DER-encoded content bytes.
+  , tbbSecurityTargetURI :: Maybe B.ByteString
+    -- ^ Security Target URI (IA5String).
+  , tbbFIPSVersion :: Maybe B.ByteString
+    -- ^ FIPS 140 version string (e.g., @\"140-2\"@, @\"140-3\"@). IA5String.
+  , tbbFIPSSecurityLevel :: Maybe Int
+    -- ^ FIPS Security Level: 1–4.
+  , tbbFIPSPlus :: Maybe Bool
+    -- ^ FIPS \"plus\" indicator (DEFAULT FALSE, omitted when False).
+  , tbbRTMType :: Maybe Int
+    -- ^ Root of Trust for Measurement type: 0 = static, 1 = dynamic, 2 = nonHosted, 3 = hybrid.
+  , tbbISO9000Certified :: Maybe Bool
+    -- ^ Whether the platform is ISO 9000 certified (DEFAULT FALSE, omitted when False).
+  , tbbISO9000URI :: Maybe B.ByteString
+    -- ^ URI to the ISO 9000 certificate (IA5String).
   } deriving (Show, Eq)
 
--- | Component configuration data for platformConfiguration-v2 encoding
--- This contains all fields needed to encode ComponentIdentifierV2 per TCG v1.1
+-- | Component configuration for @platformConfiguration-v2@ encoding.
+--
+-- Contains all fields needed to encode a @ComponentIdentifierV2@ per
+-- TCG Platform Certificate Profile v1.1 §3.1.7.
 data ComponentConfigV2 = ComponentConfigV2
-  { ccv2Class :: B.ByteString                            -- Component class (4-byte value)
-  , ccv2Manufacturer :: B.ByteString                     -- Component manufacturer
-  , ccv2Model :: B.ByteString                            -- Component model
-  , ccv2Serial :: Maybe B.ByteString                     -- Component serial (optional, tag [0])
-  , ccv2Revision :: Maybe B.ByteString                   -- Component revision (optional, tag [1])
-  , ccv2ManufacturerId :: Maybe OID                      -- Manufacturer OID (optional, tag [2])
-  , ccv2FieldReplaceable :: Maybe Bool                   -- Field replaceable (optional, tag [3])
-  , ccv2Addresses :: Maybe [(OID, B.ByteString)]         -- Component addresses (optional, tag [4])
-  , ccv2PlatformCert :: Maybe [ASN1]                     -- CertificateIdentifier (optional, tag [5])
-  , ccv2PlatformCertUri :: Maybe [ASN1]                  -- URIReference (optional, tag [6])
-  , ccv2Status :: Maybe ComponentStatus                  -- Delta status (optional, tag [7])
+  { ccv2Class :: B.ByteString
+    -- ^ Component class value (4-byte OCTET STRING, e.g., @\"\\x00\\x01\\x00\\x01\"@).
+  , ccv2Manufacturer :: B.ByteString
+    -- ^ Component manufacturer name (UTF8String).
+  , ccv2Model :: B.ByteString
+    -- ^ Component model name (UTF8String).
+  , ccv2Serial :: Maybe B.ByteString
+    -- ^ Component serial number (OPTIONAL, IMPLICIT tag [0]).
+  , ccv2Revision :: Maybe B.ByteString
+    -- ^ Component revision (OPTIONAL, IMPLICIT tag [1]).
+  , ccv2ManufacturerId :: Maybe OID
+    -- ^ Manufacturer IANA Private Enterprise Number as OID (OPTIONAL, IMPLICIT tag [2]).
+  , ccv2FieldReplaceable :: Maybe Bool
+    -- ^ Whether the component is field-replaceable (OPTIONAL, IMPLICIT tag [3]).
+  , ccv2Addresses :: Maybe [(OID, B.ByteString)]
+    -- ^ Component addresses as @(addressType OID, addressValue UTF8String)@ pairs (OPTIONAL, IMPLICIT tag [4]).
+  , ccv2PlatformCert :: Maybe [ASN1]
+    -- ^ Platform certificate identifier as raw ASN.1 (OPTIONAL, IMPLICIT tag [5]).
+  , ccv2PlatformCertUri :: Maybe [ASN1]
+    -- ^ Platform certificate URI reference as raw ASN.1 (OPTIONAL, IMPLICIT tag [6]).
+  , ccv2Status :: Maybe ComponentStatus
+    -- ^ Delta operation status (OPTIONAL, IMPLICIT tag [7]). Used only in delta certificates.
   } deriving (Show, Eq)
 
--- | Platform Config URI with optional hash for integrity verification
--- Per TCG Platform Certificate Profile v1.1:
+-- | Platform configuration URI with optional hash for integrity verification.
+--
+-- Corresponds to the @URIReference@ ASN.1 type defined in TCG PCP v2.1 §3.1.3.
+--
+-- @
 -- URIReference ::= SEQUENCE {
 --   uniformResourceIdentifier IA5String (SIZE (1..URIMAX)),
 --   hashAlgorithm AlgorithmIdentifier OPTIONAL,
 --   hashValue BIT STRING OPTIONAL }
+-- @
 data PlatformConfigUri = PlatformConfigUri
-  { pcUri :: B.ByteString                                -- Uniform Resource Identifier
-  , pcHashAlgorithm :: Maybe B.ByteString                -- Hash algorithm: "sha256", "sha384", "sha512"
-  , pcHashValue :: Maybe B.ByteString                    -- Hash value (raw bytes)
+  { pcUri :: B.ByteString
+    -- ^ Uniform Resource Identifier (IA5String, max URIMAX bytes).
+  , pcHashAlgorithm :: Maybe B.ByteString
+    -- ^ Hash algorithm name: @\"sha256\"@, @\"sha384\"@, or @\"sha512\"@.
+  , pcHashValue :: Maybe B.ByteString
+    -- ^ Hash value over the URI-referenced content (raw bytes).
   } deriving (Show, Eq)
 
--- | Extended TCG attributes configuration
+-- | Extended TCG attributes configuration for IWG Platform Certificate Profile v1.1.
+--
+-- Collects all optional attributes and overrides used by 'mkPlatformCertificateExt'
+-- to produce a fully compliant Platform Certificate. Start from
+-- 'defaultExtendedTCGAttributes' and set only the fields you need.
+--
+-- @
+-- let ext = 'defaultExtendedTCGAttributes'
+--       { 'etaPlatformSpecVersion' = Just (1, 1, 0)
+--       , 'etaCredentialSpecVersion' = Just (1, 1, 0)
+--       }
+-- @
 data ExtendedTCGAttributes = ExtendedTCGAttributes
-  { etaPlatformConfigUri :: Maybe PlatformConfigUri      -- Platform Config URI with hash info
-  , etaPlatformClass :: Maybe B.ByteString               -- Platform Class (hex string)
-  , etaCredentialSpecVersion :: Maybe (Int, Int, Int)    -- Credential Spec (major, minor, revision)
-  , etaPlatformSpecVersion :: Maybe (Int, Int, Int)      -- Platform Spec (major, minor, revision)
-  , etaSecurityAssertions :: Maybe TBBSecurityAssertions -- TBB Security Assertions
-  , etaComponentsV2 :: Maybe [ComponentConfigV2]         -- Component configs for platformConfiguration-v2
-  , etaCredentialTypeOid :: Maybe OID                    -- Override for tcg-at-tcgCredentialType OID
-  , etaHolderBaseCertificateID :: Maybe IssuerSerial     -- Optional holder baseCertificateID override
-  , etaExtensions :: Maybe Extensions                    -- Additional X.509 extensions (CertPolicies, AIA, CRL DP)
-  , etaIssuerDN :: Maybe DistinguishedName               -- Override issuer DN (from CA cert)
-  , etaSerialNumber :: Maybe Integer                     -- Certificate serial number override
-  , etaNotBefore :: Maybe DateTime                       -- Validity notBefore override
-  , etaNotAfter :: Maybe DateTime                        -- Validity notAfter override
+  { etaPlatformConfigUri :: Maybe PlatformConfigUri
+    -- ^ Platform configuration URI with optional integrity hash (OID 2.23.133.5.1.3).
+  , etaPlatformClass :: Maybe B.ByteString
+    -- ^ Platform class identifier (4-byte OCTET STRING). Defaults to @\"\\x00\\x00\\x00\\x01\"@ (Client).
+  , etaCredentialSpecVersion :: Maybe (Int, Int, Int)
+    -- ^ Credential specification version as @(major, minor, revision)@ (OID 2.23.133.2.23).
+  , etaPlatformSpecVersion :: Maybe (Int, Int, Int)
+    -- ^ Platform specification version as @(major, minor, revision)@ (OID 2.23.133.2.17).
+  , etaSecurityAssertions :: Maybe TBBSecurityAssertions
+    -- ^ TBB Security Assertions (OID 2.23.133.2.19).
+  , etaComponentsV2 :: Maybe [ComponentConfigV2]
+    -- ^ V2 component identifiers for @platformConfiguration-v2@ encoding (OID 2.23.133.5.1.7.2).
+  , etaCredentialTypeOid :: Maybe OID
+    -- ^ Override the credential type OID. Default: @tcg-kp-PlatformAttributeCertificate@.
+  , etaHolderBaseCertificateID :: Maybe IssuerSerial
+    -- ^ Override the Holder's @baseCertificateID@. Used for delta certificates.
+  , etaExtensions :: Maybe Extensions
+    -- ^ Additional X.509v3 extensions (AKI, SAN, Certificate Policies, etc.).
+  , etaIssuerDN :: Maybe DistinguishedName
+    -- ^ Override issuer Distinguished Name (typically from the CA certificate's subject).
+  , etaSerialNumber :: Maybe Integer
+    -- ^ Override the certificate serial number. Default: 1.
+  , etaNotBefore :: Maybe DateTime
+    -- ^ Override validity period start (notBefore).
+  , etaNotAfter :: Maybe DateTime
+    -- ^ Override validity period end (notAfter).
   } deriving (Show, Eq)
 
 -- | Create default extended attributes (all Nothing)
@@ -709,7 +791,18 @@ buildAttributesFromConfigExt config components _tpmInfo extAttrs = do
       Nothing -> [manufacturerAttr, modelAttr, serialAttr, versionAttr] ++ componentAttrs ++ extendedAttrs
     )
 
--- | Build extended TCG attributes from configuration
+-- | Build extended TCG attributes from configuration.
+--
+-- With defaults, only the credential type attribute is emitted:
+--
+-- >>> length (buildExtendedTCGAttrs defaultExtendedTCGAttributes)
+-- 1
+--
+-- Adding spec versions produces additional attributes:
+--
+-- >>> let ext = defaultExtendedTCGAttributes { etaPlatformSpecVersion = Just (1,1,0), etaCredentialSpecVersion = Just (1,1,0) }
+-- >>> length (buildExtendedTCGAttrs ext)
+-- 3
 buildExtendedTCGAttrs :: ExtendedTCGAttributes -> [Attribute]
 buildExtendedTCGAttrs extAttrs =
   let -- Platform Specification attribute (2.23.133.2.17)
@@ -899,17 +992,20 @@ createDummySigningFunction _dataToSign =
 
 -- * Production Platform Certificate Creation
 
--- | Create a Platform Certificate using RSA signing (production version)
+-- | Create a signed Platform Certificate with multiple signature algorithm support.
 --
--- This function creates a properly signed Platform Certificate using a real RSA private key,
--- unlike the dummy implementation above. It supports both self-signed certificates and
--- certificates signed by a CA.
--- | Create a Platform Certificate with multiple signature algorithm support
+-- Supports RSA, DSA, ECDSA, Ed25519, and Ed448.  Handles both self-signed
+-- certificates and CA-signed certificates via the 'Auth' parameter.
 --
--- This function supports multiple signature algorithms including RSA, DSA, ECDSA, Ed25519, and Ed448.
--- It handles both self-signed certificates and CA-signed certificates.
---
--- Based on the pattern from x509-validation but adapted for Platform Certificates.
+-- @
+-- -- Generate an RSA-2048 key pair and self-sign a Platform Certificate
+-- keys <- 'generateKeys' ('AlgRSA' 2048 'hashSHA256')
+-- result <- 'mkPlatformCertificate' config comps tpmInfo ekCert
+--             (notBefore, notAfter) 'Self' keys \"sha256\"
+-- case result of
+--   Right pair -> print (pairSignedCert pair)
+--   Left err   -> putStrLn err
+-- @
 mkPlatformCertificate ::
   -- | Platform configuration data
   PlatformConfiguration ->
@@ -1146,19 +1242,26 @@ computeConfigurationChain = Ops.computeConfigurationChain
 getComponentIdentifiers :: SignedPlatformCertificate -> [ComponentIdentifier]
 getComponentIdentifiers = Ops.getComponentIdentifiers
 
--- | Find components of a specific class in a Platform Certificate
+-- | Find all components matching a specific class in a Platform Certificate.
+--
+-- Returns V2 component identifiers whose 'ComponentClass' matches the target.
 findComponentByClass :: ComponentClass -> SignedPlatformCertificate -> [ComponentIdentifierV2]
 findComponentByClass targetClass cert =
   let components = Ops.getComponentIdentifiersV2 cert
    in Ops.findComponentByClass targetClass components
 
--- | Find a component by its address in a Platform Certificate
+-- | Find a component by its network or hardware address in a Platform Certificate.
+--
+-- Returns the first V2 component identifier whose address matches, or 'Nothing'.
 findComponentByAddress :: ComponentAddress -> SignedPlatformCertificate -> Maybe ComponentIdentifierV2
 findComponentByAddress addr cert =
   let components = Ops.getComponentIdentifiersV2 cert
    in Ops.findComponentByAddress addr components
 
--- | Build a component hierarchy from Platform Certificate information
+-- | Build a component hierarchy tree from a Platform Certificate.
+--
+-- Extracts V2 component identifiers and organises them into a 'ComponentHierarchy'
+-- based on component class relationships.
 buildComponentHierarchy :: SignedPlatformCertificate -> ComponentHierarchy
 buildComponentHierarchy cert =
   let components = Ops.getComponentIdentifiersV2 cert
@@ -1189,14 +1292,21 @@ extractTPMAttributes = getTPMInfo
 
 -- ** Certificate Chain Operations
 
--- | Build a certificate chain from a base certificate and deltas
+-- | Build a 'CertificateChain' from a base Platform Certificate and its delta certificates.
+--
+-- The chain records the base reference and all intermediate delta references,
+-- which can then be validated with 'validateCertificateChain'.
 buildCertificateChain ::
   SignedPlatformCertificate ->
   [SignedDeltaPlatformCertificate] ->
   CertificateChain
 buildCertificateChain = Ops.buildCertificateChain
 
--- | Validate a certificate chain for consistency
+-- | Validate a certificate chain for consistency.
+--
+-- Checks chain continuity (no duplicate serial numbers, no base\/delta conflicts)
+-- and validity of each certificate reference. Returns a list of error messages;
+-- an empty list means the chain is valid.
 validateCertificateChain :: CertificateChain -> [String]
 validateCertificateChain chain =
   validateChainContinuity chain
@@ -1322,8 +1432,14 @@ validateChainValidity chain =
 extractPresentOIDs :: Attributes -> [OID]
 extractPresentOIDs (Attributes attrs) = map attrType attrs
 
--- | Encode an OID to DER content bytes (without tag/length wrapper).
--- First two components encoded as 40*a+b, remaining use base-128 VLQ.
+-- | Encode an OID to DER content bytes (without tag\/length wrapper).
+-- First two components encoded as @40*a+b@, remaining use base-128 VLQ.
+--
+-- >>> import qualified Data.ByteString as B
+-- >>> B.unpack (oidToContentBytes [2, 23, 133, 2, 19])
+-- [103,129,5,2,19]
+-- >>> B.unpack (oidToContentBytes [1, 2, 840, 113549])
+-- [42,134,72,134,247,13]
 oidToContentBytes :: OID -> B.ByteString
 oidToContentBytes [] = B.empty
 oidToContentBytes [x] = B.singleton (fromIntegral (40 * x))
