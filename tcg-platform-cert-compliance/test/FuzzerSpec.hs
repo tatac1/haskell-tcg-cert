@@ -13,7 +13,6 @@ module FuzzerSpec (tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
-import Test.QuickCheck (Gen, choose, elements, oneof, listOf1, vectorOf)
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
@@ -45,12 +44,6 @@ import Data.X509.TCG.Compliance.Value
   ( checkEalLevel, checkFipsLevel, checkSofRange
   , checkTpmSecVersion, checkManufacturerStr
   )
-import Data.X509.TCG.Compliance.Structural
-  ( checkVersion, checkHolder, checkSignatureAlg
-  , checkSerialNumber, checkValidityPeriod
-  )
-import Data.X509.TCG.Compliance.Security (checkMeasurementRootType)
-import Data.X509.TCG.Compliance.Registry (checkTcgRegistryOid, checkClassValueStruct)
 
 -- Cert building helpers from ComplianceCheckSpec
 import ComplianceCheckSpec
@@ -60,7 +53,7 @@ import ComplianceCheckSpec
   , mkTcgCredentialTypeBaseAttr, mkTcgCredentialSpecAttr
   , mkTbbSecAttr, mkTbbSecAttrFull, mkTbbSecAttrWithSOF
   , defaultSan, defaultComp, CompSpec(..)
-  , assertPass, assertFail
+  , assertFail
   )
 
 -- ============================================================================
@@ -215,12 +208,6 @@ buildCompliantCert eta san = do
       cert = buildCert 1 100 (mkHolder (Just 1)) testIssuer
                (SignatureALG HashSHA256 PubKeyALG_RSA)
                attrs (standardExts san) (mkValidity 2024 2030) Nothing
-  runComplianceTest cert defaultComplianceOptions
-
--- | Build a standard good cert (using raw ASN.1 helpers)
-goodCert :: IO ComplianceResult
-goodCert = do
-  let cert = mkCert (Attributes standardAttrs) (standardExts defaultSan)
   runComplianceTest cert defaultComplianceOptions
 
 -- | Build a mutated cert for a given mutation type

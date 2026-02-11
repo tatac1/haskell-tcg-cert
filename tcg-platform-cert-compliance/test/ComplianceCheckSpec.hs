@@ -23,7 +23,6 @@ import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as L
 import Data.ASN1.BitArray (BitArray(..))
 import Data.ASN1.Types
-import Data.ASN1.Types.String
 import Data.ASN1.BinaryEncoding (DER(..))
 import Data.ASN1.Encoding (encodeASN1)
 import Time.Types (Date(..), DateTime(..), Month(..), TimeOfDay(..))

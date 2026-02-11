@@ -52,20 +52,20 @@ attributeValidationTests = testGroup "Attribute Validation Tests"
   [ testCase "validatePlatformManufacturerAttr - empty fails" $ do
       let errors = validatePlatformManufacturerAttr B.empty
       length errors @?= 1
-      case head errors of
-        AttributeError msg -> "empty" `isInfixOf` msg @?= True
+      case errors of
+        (AttributeError msg : _) -> "empty" `isInfixOf` msg @?= True
         _ -> assertFailure "Expected AttributeError"
-        
+
   , testCase "validatePlatformManufacturerAttr - valid passes" $ do
       let errors = validatePlatformManufacturerAttr "ValidManufacturer"
       errors @?= []
-      
+
   , testCase "validatePlatformManufacturerAttr - too long fails" $ do
       let longName = B.replicate 300 65 -- 300 'A's, exceeds 256 limit
       let errors = validatePlatformManufacturerAttr longName
       length errors @?= 1
-      case head errors of
-        AttributeError msg -> "maximum length" `isInfixOf` msg @?= True
+      case errors of
+        (AttributeError msg : _) -> "maximum length" `isInfixOf` msg @?= True
         _ -> assertFailure "Expected AttributeError for length"
         
   , testCase "validatePlatformModelAttr - empty fails" $ do

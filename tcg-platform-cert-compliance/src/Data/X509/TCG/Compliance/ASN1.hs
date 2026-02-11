@@ -269,14 +269,14 @@ decodeOIDContent bs = do
       | B.null input = Right []
       | otherwise = go input []
       where
-        go bs acc =
-          case B.uncons bs of
+        go bs' acc =
+          case B.uncons bs' of
             Nothing -> Right (reverse acc)
             Just _ -> do
-              (arc, rest) <- decodeArc bs
+              (arc, rest) <- decodeArc bs'
               go rest (arc : acc)
 
-        decodeArc bs =
+        decodeArc bs' =
           let step current remaining =
                 case B.uncons remaining of
                   Nothing -> Left "OID: truncated base128 encoding"
@@ -286,15 +286,15 @@ decodeOIDContent bs = do
                     in if continue
                          then step value rest
                          else Right (value, rest)
-          in step 0 bs
+          in step 0 bs'
 
 parseSequenceContent :: [ASN1] -> Either Text ([ASN1], [ASN1])
 parseSequenceContent (Start Sequence : rest) = collectContainer Sequence rest
 parseSequenceContent _ = Left "ASN.1: expected SEQUENCE"
 
-parseSetContent :: [ASN1] -> Either Text ([ASN1], [ASN1])
-parseSetContent (Start Set : rest) = collectContainer Set rest
-parseSetContent _ = Left "ASN.1: expected SET"
+_parseSetContent :: [ASN1] -> Either Text ([ASN1], [ASN1])
+_parseSetContent (Start Set : rest) = collectContainer Set rest
+_parseSetContent _ = Left "ASN.1: expected SET"
 
 -- | Strip the outer SEQUENCE and return its contents.
 stripSequence :: [ASN1] -> Either Text [ASN1]
@@ -371,8 +371,8 @@ parseURIReferenceContent content = do
               _ -> (Nothing, rest1)
       return (algPart, hashPart, rest2)
 
-parseURIReference :: [ASN1] -> Either Text ParsedURIReference
-parseURIReference xs = do
+_parseURIReference :: [ASN1] -> Either Text ParsedURIReference
+_parseURIReference xs = do
   content <- stripSequenceOrContent xs
   parseURIReferenceContent content
 
@@ -422,8 +422,8 @@ parseCertificateIdentifierContent content = go content (ParsedCertificateIdentif
         else go remaining acc { pciIssuerSerial = Just isr }
     go (_:_) _ = Left "CertificateIdentifier: unexpected token"
 
-parseCertificateIdentifier :: [ASN1] -> Either Text ParsedCertificateIdentifier
-parseCertificateIdentifier xs = do
+_parseCertificateIdentifier :: [ASN1] -> Either Text ParsedCertificateIdentifier
+_parseCertificateIdentifier xs = do
   content <- stripSequenceOrContent xs
   parseCertificateIdentifierContent content
 
@@ -645,9 +645,9 @@ parseOptionalContextEnum tag (Other Context t bs : rest)
       Right (Just v, rest)
 parseOptionalContextEnum _ xs = Right (Nothing, xs)
 
-decodeStatus :: Maybe B.ByteString -> Maybe Integer
-decodeStatus Nothing = Nothing
-decodeStatus (Just bs) =
+_decodeStatus :: Maybe B.ByteString -> Maybe Integer
+_decodeStatus Nothing = Nothing
+_decodeStatus (Just bs) =
   case decodeEnumContent bs of
     Right v -> Just v
     Left _ -> Nothing
@@ -793,12 +793,6 @@ parseCommonCriteriaMeasuresContent content = do
     parseOptionalBool :: Text -> [ASN1] -> Either Text (Bool, [ASN1])
     parseOptionalBool _ (Boolean b : rest) = Right (b, rest)
     parseOptionalBool _ xs = Right (False, xs)
-
-    parseOptionalContextEnum :: Int -> [ASN1] -> Either Text (Maybe Integer, [ASN1])
-    parseOptionalContextEnum tag (Other Context t bs : rest) | t == tag = do
-      v <- decodeEnumContent bs
-      Right (Just v, rest)
-    parseOptionalContextEnum _ xs = Right (Nothing, xs)
 
     parseOptionalContextOidTag :: Int -> [ASN1] -> Either Text (Maybe OID, [ASN1])
     parseOptionalContextOidTag tag (Other Context t bs : rest) | t == tag = do

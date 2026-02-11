@@ -11,8 +11,6 @@ import qualified Data.ByteString.Char8 as BC
 import Data.Yaml (encodeFile, decodeFileEither)
 import System.Directory (doesFileExist)
 import System.IO.Temp (withSystemTempFile)
-import qualified Data.Text.Encoding as T
-
 import Data.X509.TCG.Util.Config
 import Data.X509.TCG.Util.Paccor
 import Data.X509.TCG
@@ -319,16 +317,18 @@ paccorConversionTests = testGroup "Paccor JSON Conversion"
       pccManufacturerId yamlConfig @?= Just "1.3.6.1.4.1.674"  -- Test PLATFORMMANUFACTURERID
       length (pccComponents yamlConfig) @?= 1
 
-      let comp = head (pccComponents yamlConfig)
-      ccClass comp @?= "00000001"
-      ccManufacturer comp @?= "Dell Inc."
-      ccModel comp @?= "Desktop"
-      -- Test ComponentClassConfig
-      case ccComponentClass comp of
-        Just ccc -> do
-          cccRegistry ccc @?= "2.23.133.18.3.1"
-          cccValue ccc @?= "00000001"
-        Nothing -> assertFailure "Expected componentClass to be present"
+      case pccComponents yamlConfig of
+        (comp:_) -> do
+          ccClass comp @?= "00000001"
+          ccManufacturer comp @?= "Dell Inc."
+          ccModel comp @?= "Desktop"
+          -- Test ComponentClassConfig
+          case ccComponentClass comp of
+            Just ccc -> do
+              cccRegistry ccc @?= "2.23.133.18.3.1"
+              cccValue ccc @?= "00000001"
+            Nothing -> assertFailure "Expected componentClass to be present"
+        [] -> assertFailure "expected non-empty components"
 
   , testCase "Format detection - JSON extension" $ do
       let format = detectInputFormat "device.json" ""
@@ -370,6 +370,12 @@ paccorConversionTests = testGroup "Paccor JSON Conversion"
                             { paccorEthernetMac = Nothing
                             , paccorWlanMac = Just "aa:bb:cc:dd:ee:ff"
                             , paccorBluetoothMac = Nothing
+                            , paccorPciAddress = Nothing
+                            , paccorUsbAddress = Nothing
+                            , paccorSataAddress = Nothing
+                            , paccorWwnAddress = Nothing
+                            , paccorNvmeAddress = Nothing
+                            , paccorLogicalAddress = Nothing
                             }
                         ]
                     , componentStatus = Nothing
@@ -385,12 +391,14 @@ paccorConversionTests = testGroup "Paccor JSON Conversion"
       let yamlConfig = paccorToYamlConfig paccorConfig
       length (pccComponents yamlConfig) @?= 1
 
-      let comp = head (pccComponents yamlConfig)
-      ccFieldReplaceable comp @?= Just True  -- Test FIELDREPLACEABLE conversion
-      ccManufacturerId comp @?= Just "1.3.6.1.4.1.343"  -- Test MANUFACTURERID conversion
-      case ccAddresses comp of
-        Just (addr:_) -> addrWlanMac addr @?= Just "aa:bb:cc:dd:ee:ff"
-        _ -> assertFailure "Expected addresses to be present"
+      case pccComponents yamlConfig of
+        (comp:_) -> do
+          ccFieldReplaceable comp @?= Just True  -- Test FIELDREPLACEABLE conversion
+          ccManufacturerId comp @?= Just "1.3.6.1.4.1.343"  -- Test MANUFACTURERID conversion
+          case ccAddresses comp of
+            Just (addr:_) -> addrWlanMac addr @?= Just "aa:bb:cc:dd:ee:ff"
+            _ -> assertFailure "Expected addresses to be present"
+        [] -> assertFailure "expected non-empty components"
 
   , testCase "Convert paccor with PROPERTIES" $ do
       let paccorConfig = PaccorConfig
@@ -420,13 +428,11 @@ paccorConversionTests = testGroup "Paccor JSON Conversion"
 
       let yamlConfig = paccorToYamlConfig paccorConfig
       case pccProperties yamlConfig of
-        Just props -> do
-          length props @?= 2
-          let prop1 = head props
+        Just (prop1:prop2:_) -> do
           propName prop1 @?= "firmware.version"
           propValue prop1 @?= "1.2.3"
-          let prop2 = props !! 1
           propStatus prop2 @?= Just "ADDED"
+        Just _ -> assertFailure "expected at least 2 properties"
         Nothing -> assertFailure "Expected properties to be present"
 
   , testCase "Convert paccor with PLATFORMCERT" $ do
@@ -480,22 +486,24 @@ paccorConversionTests = testGroup "Paccor JSON Conversion"
       let yamlConfig = paccorToYamlConfig paccorConfig
       length (pccComponents yamlConfig) @?= 1
 
-      let comp = head (pccComponents yamlConfig)
-      case ccPlatformCert comp of
-        Just pc -> do
-          case cpcAttributeCertId pc of
-            Just acid -> do
-              acidHashAlgorithm acid @?= "1.3.6.1.4.1.22554.1.2.1"
-              acidHashValue acid @?= "ABCD1234"
-            Nothing -> assertFailure "Expected attributeCertId to be present"
-          case cpcGenericCertId pc of
-            Just gcid -> do
-              gcidSerial gcid @?= "12345"
-              length (gcidIssuer gcid) @?= 2
-            Nothing -> assertFailure "Expected genericCertId to be present"
-        Nothing -> assertFailure "Expected platformCert to be present"
+      case pccComponents yamlConfig of
+        (comp:_) -> do
+          case ccPlatformCert comp of
+            Just pc -> do
+              case cpcAttributeCertId pc of
+                Just acid -> do
+                  acidHashAlgorithm acid @?= "1.3.6.1.4.1.22554.1.2.1"
+                  acidHashValue acid @?= "ABCD1234"
+                Nothing -> assertFailure "Expected attributeCertId to be present"
+              case cpcGenericCertId pc of
+                Just gcid -> do
+                  gcidSerial gcid @?= "12345"
+                  length (gcidIssuer gcid) @?= 2
+                Nothing -> assertFailure "Expected genericCertId to be present"
+            Nothing -> assertFailure "Expected platformCert to be present"
 
-      case ccPlatformCertUri comp of
-        Just uri -> uriUri uri @?= "https://example.com/cert.cer"
-        Nothing -> assertFailure "Expected platformCertUri to be present"
+          case ccPlatformCertUri comp of
+            Just uri -> uriUri uri @?= "https://example.com/cert.cer"
+            Nothing -> assertFailure "Expected platformCertUri to be present"
+        [] -> assertFailure "expected non-empty components"
   ]

@@ -78,7 +78,6 @@ where
 import Data.ASN1.BinaryEncoding (DER (..))
 import Data.ASN1.Encoding (decodeASN1', encodeASN1)
 import Data.ASN1.Types
-import Data.ASN1.Types.String (ASN1CharacterString(..), ASN1StringEncoding(..))
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Map.Strict as Map

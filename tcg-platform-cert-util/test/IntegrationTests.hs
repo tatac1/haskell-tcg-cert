@@ -4,22 +4,15 @@ module IntegrationTests (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.QuickCheck (choose, forAll)
-
 import qualified Data.ByteString as B
 import Data.ASN1.Types
-import System.Directory (doesFileExist, removeFile)
-import System.IO (hClose)
+import System.Directory (doesFileExist)
 import System.IO.Temp (withSystemTempFile, withSystemTempDirectory)
 import System.FilePath ((</>))
-import Control.Exception (catch, IOException)
 import Data.Yaml (encodeFile)
 
 import Data.X509.TCG.Util.Config
 import Data.X509.TCG.Util.ASN1
-import Data.X509.TCG.Util.Certificate
-import Data.X509.TCG.Util.Display
-import Data.X509.TCG.Util.CLI
 
 tests :: TestTree
 tests = testGroup "Integration Tests"
@@ -33,7 +26,7 @@ tests = testGroup "Integration Tests"
 configToASN1Tests :: TestTree
 configToASN1Tests = testGroup "Configuration to ASN.1 Workflow"
   [ testCase "Load config and extract components" $ do
-      withSystemTempFile "integration-config.yaml" $ \configPath handle -> do
+      withSystemTempFile "integration-config.yaml" $ \configPath _handle -> do
         let config = PlatformCertConfig
               { pccManufacturer = "Integration Test Corp"
               , pccModel = "Test Model"
@@ -105,7 +98,9 @@ configToASN1Tests = testGroup "Configuration to ASN.1 Workflow"
       -- Test ASN.1 parsing
       let octetStrings = findOctetStringsInASN1 [OctetString "test"]
       length octetStrings @?= 1
-      head octetStrings @?= "test"
+      case octetStrings of
+        (x:_) -> x @?= "test"
+        []    -> assertFailure "expected non-empty octet strings"
   ]
 
 -- | Test complete certificate workflow
@@ -198,7 +193,7 @@ cliIntegrationTests = testGroup "CLI Integration"
           Left err -> assertFailure $ "Example config is invalid: " ++ err
 
   , testCase "Delta config workflow" $ do
-      withSystemTempFile "delta-workflow.yaml" $ \configPath handle -> do
+      withSystemTempFile "delta-workflow.yaml" $ \configPath _handle -> do
         let deltaConfig = DeltaCertConfig
               { dccManufacturer = "Delta Test Corp"
               , dccModel = "Delta Model"
@@ -260,7 +255,7 @@ errorHandlingTests = testGroup "Error Handling"
 
   , testCase "File system error handling" $ do
       -- Test file operations that might fail
-      withSystemTempFile "temp-test.yaml" $ \path handle -> do
+      withSystemTempFile "temp-test.yaml" $ \path _handle -> do
         -- Create a valid config
         let config = PlatformCertConfig
               { pccManufacturer = "Error Test"

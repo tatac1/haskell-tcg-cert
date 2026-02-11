@@ -5,7 +5,6 @@ module DisplayTests (tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
-import Test.QuickCheck (choose, forAll)
 
 import Data.X509.TCG.Util.Display
 

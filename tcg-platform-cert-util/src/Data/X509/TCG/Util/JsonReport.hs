@@ -34,18 +34,17 @@ module Data.X509.TCG.Util.JsonReport
   ) where
 
 import Data.Text (Text)
-import qualified Data.Text as T
 import Data.Time (UTCTime)
 import Data.Aeson
 import qualified Data.ByteString.Lazy as LBS
 import GHC.Generics (Generic)
 
 import Data.X509.TCG.Compliance.Types
-    ( CheckId(..), CheckCategory(..), ComplianceMode(..)
-    , RequirementLevel(..), requirementLevelText, checkIdToText
+    ( ComplianceMode(..)
+    , requirementLevelText, checkIdToText
     , complianceModeText
     )
-import Data.X509.TCG.Compliance.Suggestion (Suggestion, formatSuggestion)
+import Data.X509.TCG.Compliance.Suggestion (formatSuggestion)
 import Data.X509.TCG.Compliance.Result
     ( ComplianceResult(..), CategoryResult(..)
     )

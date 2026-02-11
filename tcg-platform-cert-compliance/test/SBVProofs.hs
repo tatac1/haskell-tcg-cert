@@ -21,8 +21,6 @@ import Test.Tasty.HUnit
 
 import Data.SBV
 import Data.List (nub, sort)
-import Data.Word (Word32)
-import Data.Int (Int64)
 import qualified Data.Map.Strict as Map
 
 import Data.X509.TCG.Compliance.Types

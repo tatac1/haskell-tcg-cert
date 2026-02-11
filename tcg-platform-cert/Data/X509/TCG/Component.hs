@@ -43,7 +43,6 @@ module Data.X509.TCG.Component
 where
 
 import Data.ASN1.Types
-import Data.ASN1.Types.String (ASN1CharacterString(..), ASN1StringEncoding(..))
 import qualified Data.ByteString as B
 
 -- | Component Identifier structure (v1)
@@ -385,9 +384,9 @@ instance ASN1Object ComponentIdentifier where
       ++ maybe [] (\mr -> [ASN1String (ASN1CharacterString UTF8 mr)]) mfgRevision
       ++ [End Sequence]
       ++ xs
-  fromASN1 (Start Sequence : mfg : mdl : rest) = do
-    manufacturer <- parseComponentString "ComponentIdentifier manufacturer" mfg
-    model <- parseComponentString "ComponentIdentifier model" mdl
+  fromASN1 (Start Sequence : mfgASN1 : mdlASN1 : rest) = do
+    manufacturer <- parseComponentString "ComponentIdentifier manufacturer" mfgASN1
+    model <- parseComponentString "ComponentIdentifier model" mdlASN1
     parseOptionalFields rest manufacturer model Nothing Nothing Nothing Nothing
     where
       parseOptionalFields (End Sequence : remaining) mfg mdl ser rev mfgSer mfgRev =

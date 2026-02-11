@@ -9,13 +9,9 @@ module Main where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.QuickCheck
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Text (Text)
-import qualified Data.Text as T
-import Data.Word (Word8, Word16)
 
 import Data.HardwareInfo.Types
 import Data.HardwareInfo.Smbios.Types

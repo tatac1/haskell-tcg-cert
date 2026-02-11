@@ -13,7 +13,7 @@ import Data.X509.TCG.Util.Config
     , URIReferenceConfig(..)
     , ComponentClassConfig(..)
     )
-import Data.X509.TCG.Compliance.Types (CheckId(..), CheckCategory(..), RequirementLevel(..))
+import Data.X509.TCG.Compliance.Types (CheckId(..), CheckCategory(..))
 
 -- | Minimal valid Base config for testing
 validBaseConfig :: PlatformCertConfig

@@ -182,6 +182,10 @@ applySingle (Right tracked) (cid, status) =
       | otherwise ->
           Left $ "Cannot ADD already-present component: " <> compIdText cid
 
+    -- ComponentUnchanged: no state change needed
+    (Nothing, ComponentUnchanged) -> Right tracked
+    (Just _, ComponentUnchanged) -> Right tracked
+
 lookup' :: CompId -> [TrackedComponent] -> Maybe TrackedComponent
 lookup' cid = foldr (\tc acc -> if tcId tc == cid then Just tc else acc) Nothing
 

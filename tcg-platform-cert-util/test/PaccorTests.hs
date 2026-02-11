@@ -117,23 +117,26 @@ paccorTests = testGroup "Paccor Config Parsing"
           -- CERTIFICATEPOLICIES
           case pextCertPolicies ext of
             Nothing -> assertFailure "Missing CERTIFICATEPOLICIES"
-            Just policies -> do
-              length policies @?= 1
-              pcpOid (head policies) @?= "1.2.840.113741.1.5.2.4"
-              length (pcpQualifiers (head policies)) @?= 2
+            Just (p0:_) -> do
+              pcpOid p0 @?= "1.2.840.113741.1.5.2.4"
+              let qs = pcpQualifiers p0
+              length qs @?= 2
               -- Verify qualifier types
-              let qs = pcpQualifiers (head policies)
-              ppqId (head qs) @?= "CPS"
-              ppqValue (head qs) @?= "http://www.example.invalid/cps"
-              ppqId (qs !! 1) @?= "USERNOTICE"
-              ppqValue (qs !! 1) @?= "TCG Trusted Platform Endorsement"
+              case qs of
+                (q0:q1:_) -> do
+                  ppqId q0 @?= "CPS"
+                  ppqValue q0 @?= "http://www.example.invalid/cps"
+                  ppqId q1 @?= "USERNOTICE"
+                  ppqValue q1 @?= "TCG Trusted Platform Endorsement"
+                _ -> assertFailure "Expected at least 2 qualifiers"
+            Just [] -> assertFailure "Expected non-empty policies"
           -- AUTHORITYINFOACCESS
           case pextAuthorityInfoAccess ext of
             Nothing -> assertFailure "Missing AUTHORITYINFOACCESS"
-            Just aias -> do
-              length aias @?= 1
-              paiaMethod (head aias) @?= "OCSP"
-              paiaLocation (head aias) @?= "http://www.example.invalid/ocsp"
+            Just (aia0:_) -> do
+              paiaMethod aia0 @?= "OCSP"
+              paiaLocation aia0 @?= "http://www.example.invalid/ocsp"
+            Just [] -> assertFailure "Expected non-empty AIA list"
           -- CRLDISTRIBUTION
           case pextCrlDistribution ext of
             Nothing -> assertFailure "Missing CRLDISTRIBUTION"

@@ -4,9 +4,8 @@ module JsonReportTests (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Data.Aeson (decode, Value(..), encode)
+import Data.Aeson (decode, Value(..))
 import qualified Data.Aeson.KeyMap as KM
-import qualified Data.ByteString.Lazy as LBS
 import Data.Time (UTCTime(..))
 import Data.Time.Calendar (fromGregorian)
 

@@ -132,7 +132,7 @@ where
 
 -- Cryptographic signing imports
 
-import Crypto.Hash (HashAlgorithm, SHA256 (..), SHA384 (..), SHA512 (..), hashWith)
+import Crypto.Hash (HashAlgorithm, SHA256 (..), SHA384 (..), SHA512 (..))
 import qualified Crypto.PubKey.DSA as DSA
 import qualified Crypto.PubKey.ECC.ECDSA as ECDSA
 import qualified Crypto.PubKey.ECC.Generate as ECC
@@ -521,7 +521,7 @@ componentsToAttribute components =
        OctetString (ciManufacturer comp),
        OctetString (ciModel comp)] ++
       (case ciSerial comp of
-         Just serial -> [OctetString serial]
+         Just ser -> [OctetString ser]
          Nothing -> [Null]) ++
       (case ciRevision comp of
          Just revision -> [OctetString revision]

@@ -7,13 +7,8 @@ import Test.Tasty.HUnit
 
 -- TCG imports
 import qualified Data.X509.TCG as TCG
-import Data.X509.TCG.Util.Certificate
-import Data.X509.TCG.Util.Config
-import Data.X509.TCG
-
--- Crypto imports  
+-- Crypto imports
 import qualified Crypto.PubKey.RSA as RSA
-import qualified Crypto.PubKey.DSA as DSA
 import qualified Crypto.PubKey.ECC.Types as ECC
 
 tests :: TestTree

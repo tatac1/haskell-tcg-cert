@@ -72,12 +72,6 @@ baseComp = ComponentConfigV2
   , ccv2Status = Nothing
   }
 
--- | Helper to assert Left result
-assertLeft :: String -> Either String a -> Assertion
-assertLeft msg result = case result of
-  Left _ -> return ()
-  Right _ -> assertFailure $ msg ++ ": expected Left but got Right"
-
 -- | Helper to assert Left with specific substring in error message
 assertLeftContains :: String -> String -> Either String a -> Assertion
 assertLeftContains msg substr result = case result of

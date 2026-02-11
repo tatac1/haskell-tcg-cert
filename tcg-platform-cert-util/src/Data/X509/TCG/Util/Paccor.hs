@@ -81,7 +81,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Data.Bits (shiftR, (.&.))
-import Data.X509 (Extensions(..), ExtensionRaw(..), Certificate(..), ExtSubjectKeyId(..), extensionGet, certIssuerDN, certSerial, DistinguishedName(..))
+import Data.X509 (Extensions(..), ExtensionRaw(..), Certificate(..), ExtSubjectKeyId(..), extensionGet, certIssuerDN, certSerial)
 import qualified Data.Yaml as Yaml
 import GHC.Generics (Generic)
 import Text.Read (readMaybe)

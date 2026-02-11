@@ -4,7 +4,7 @@ module SuggestionSpec (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Data.Text (Text, isInfixOf)
+import Data.Text (isInfixOf)
 
 import Data.X509.TCG.Compliance.Suggestion
 

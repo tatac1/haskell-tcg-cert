@@ -50,7 +50,6 @@ module Data.X509.TCG.Platform
 where
 
 import Data.ASN1.Types
-import Data.ASN1.Types.String (ASN1CharacterString(..), ASN1StringEncoding(..))
 import Data.ASN1.Encoding (decodeASN1')
 import Data.ASN1.BinaryEncoding (DER(..))
 import qualified Data.ByteString as B

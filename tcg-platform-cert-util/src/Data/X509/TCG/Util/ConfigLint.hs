@@ -302,8 +302,10 @@ checkManufacturerId config = case pccManufacturerId config of
 
 isValidOidFormat :: String -> Bool
 isValidOidFormat s =
-  not (null s) && all (\c -> c == '.' || (c >= '0' && c <= '9')) s
-    && not ('.' == head s) && not ('.' == last s)
+  case s of
+    [] -> False
+    (c0:cs) -> all (\c -> c == '.' || (c >= '0' && c <= '9')) s
+      && c0 /= '.' && safeLast c0 cs /= '.'
     && ".." `notSubstringOf` s
   where
     notSubstringOf sub str = not $ any (isPrefixOf sub) (tails str)
@@ -312,6 +314,9 @@ isValidOidFormat s =
     isPrefixOf (x:xs) (y:ys) = x == y && isPrefixOf xs ys
     tails [] = [[]]
     tails xs@(_:xs') = xs : tails xs'
+    safeLast def [] = def
+    safeLast _ [x] = x
+    safeLast def (_:xs) = safeLast def xs
 
 -- ============================================================
 -- Config-only checks (CFG-001~003)

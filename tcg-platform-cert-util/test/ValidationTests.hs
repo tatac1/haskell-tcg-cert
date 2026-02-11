@@ -8,9 +8,7 @@ import Data.X509 (PrivKey (..))
 -- TCG imports
 
 import Data.X509.TCG
-import qualified Data.X509.TCG as TCG
 import Data.X509.TCG.Util.Certificate
-import Data.X509.TCG.Util.Config
 import Test.Tasty
 import Test.Tasty.HUnit
 
