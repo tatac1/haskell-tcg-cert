@@ -87,166 +87,268 @@ import Data.X509.TCG.Component (ComponentClass, ComponentIdentifier, ComponentId
 import Data.X509.TCG.OID
 import Data.X509.TCG.Platform (PlatformConfiguration, PlatformConfigurationV2, TPMSpecification, TPMVersion)
 
--- | TCG Attribute enumeration
+-- | TCG Attribute enumeration.
 --
--- Represents all types of attributes defined in the TCG specifications.
+-- A sum type representing all attribute types defined in the TCG Platform
+-- Certificate Profile v2.1 and IWG Platform Certificate Profile v1.1.
+-- Each constructor wraps a specific attribute data type.
 data TCGAttribute
   = TCGPlatformConfiguration PlatformConfigurationAttr
+    -- ^ Platform Configuration v1 attribute (TCG PCP v2.1, Section 3.1).
   | TCGPlatformConfigurationV2 PlatformConfigurationV2Attr
+    -- ^ Platform Configuration v2 attribute with delta support (TCG PCP v2.1, Section 3.1).
   | TCGComponentIdentifier ComponentIdentifierAttr
+    -- ^ Component Identifier v1 attribute (TCG PCP v2.1, Section 3.2).
   | TCGComponentIdentifierV2 ComponentIdentifierV2Attr
+    -- ^ Component Identifier v2 attribute with extended fields (TCG PCP v2.1, Section 3.2).
   | TCGComponentClass ComponentClassAttr
+    -- ^ Component Class attribute describing hardware component type.
   | TCGPlatformManufacturer PlatformManufacturerAttr
+    -- ^ Platform manufacturer name attribute.
   | TCGPlatformModel PlatformModelAttr
+    -- ^ Platform model name attribute.
   | TCGPlatformSerial PlatformSerialAttr
+    -- ^ Platform serial number attribute.
   | TCGPlatformVersion PlatformVersionAttr
+    -- ^ Platform version string attribute.
   | TCGTPMModel TPMModelAttr
+    -- ^ TPM model identifier attribute.
   | TCGTPMVersion TPMVersionAttr
+    -- ^ TPM version attribute.
   | TCGTPMSpecification TPMSpecificationAttr
+    -- ^ TPM specification attribute (family, level, revision).
   | TCGRelevantCredentials RelevantCredentialsAttr
+    -- ^ Relevant credentials extension attribute.
   | TCGRelevantManifests RelevantManifestsAttr
+    -- ^ Relevant manifests extension attribute.
   | TCGVirtualPlatform VirtualPlatformAttr
+    -- ^ Virtual platform indicator extension attribute.
   | TCGMultiTenant MultiTenantAttr
-  -- | Extended platform attributes (IWG v1.1)
+    -- ^ Multi-tenant indicator extension attribute.
   | TCGPlatformConfigUri PlatformConfigUriAttr
+    -- ^ Platform Configuration URI attribute (IWG v1.1).
   | TCGPlatformClass PlatformClassAttr
+    -- ^ Platform Class attribute (IWG v1.1).
   | TCGCertificationLevel CertificationLevelAttr
+    -- ^ Certification Level attribute (IWG v1.1).
   | TCGPlatformQualifiers PlatformQualifiersAttr
+    -- ^ Platform Qualifiers attribute (IWG v1.1).
   | TCGRootOfTrust RootOfTrustAttr
+    -- ^ Root of Trust attribute (IWG v1.1).
   | TCGRTMType RTMTypeAttr
+    -- ^ RTM Type attribute (IWG v1.1).
   | TCGBootMode BootModeAttr
+    -- ^ Boot Mode attribute (IWG v1.1).
   | TCGFirmwareVersion FirmwareVersionAttr
+    -- ^ Firmware Version attribute (IWG v1.1).
   | TCGPolicyReference PolicyReferenceAttr
-  | -- | For unknown/custom attributes
-    TCGOtherAttribute OID B.ByteString
+    -- ^ Policy Reference attribute (IWG v1.1).
+  | TCGOtherAttribute OID B.ByteString
+    -- ^ Unknown or custom attribute with raw OID and DER-encoded value.
   deriving (Show, Eq)
 
--- | TCG Attribute Value wrapper
+-- | TCG Attribute Value wrapper.
+--
+-- Holds the raw OID, DER-encoded value bytes, and criticality flag
+-- for a single TCG attribute as it appears in the certificate.
 data TCGAttributeValue = TCGAttributeValue
-  { tcgAttrOID :: OID,
-    tcgAttrValue :: B.ByteString,
-    tcgAttrCritical :: Bool
+  { tcgAttrOID :: OID
+    -- ^ The OID identifying the attribute type.
+  , tcgAttrValue :: B.ByteString
+    -- ^ The DER-encoded attribute value bytes.
+  , tcgAttrCritical :: Bool
+    -- ^ Whether this attribute is marked as critical.
   }
   deriving (Show, Eq)
 
 -- * Platform Configuration Attributes
 
--- | Platform Configuration attribute (v1)
+-- | Platform Configuration attribute (v1).
+--
+-- Wraps a 'PlatformConfiguration' with optional timestamp and certification level
+-- metadata (TCG PCP v2.1, Section 3.1).
 data PlatformConfigurationAttr = PlatformConfigurationAttr
-  { pcaConfiguration :: PlatformConfiguration,
-    pcaTimestamp :: Maybe B.ByteString,
-    pcaCertificationLevel :: Maybe Int
+  { pcaConfiguration :: PlatformConfiguration
+    -- ^ The platform configuration data.
+  , pcaTimestamp :: Maybe B.ByteString
+    -- ^ Optional timestamp of when the configuration was captured.
+  , pcaCertificationLevel :: Maybe Int
+    -- ^ Optional certification level (1-7) for this configuration.
   }
   deriving (Show, Eq)
 
--- | Platform Configuration attribute (v2) with status tracking
+-- | Platform Configuration attribute (v2) with status tracking.
+--
+-- Extends the v1 configuration with a change sequence number for
+-- delta certificate support (TCG PCP v2.1, Section 3.1).
 data PlatformConfigurationV2Attr = PlatformConfigurationV2Attr
-  { pcv2aConfiguration :: PlatformConfigurationV2,
-    pcv2aTimestamp :: Maybe B.ByteString,
-    pcv2aCertificationLevel :: Maybe Int,
-    pcv2aChangeSequence :: Maybe Integer
+  { pcv2aConfiguration :: PlatformConfigurationV2
+    -- ^ The v2 platform configuration data.
+  , pcv2aTimestamp :: Maybe B.ByteString
+    -- ^ Optional timestamp of when the configuration was captured.
+  , pcv2aCertificationLevel :: Maybe Int
+    -- ^ Optional certification level (1-7) for this configuration.
+  , pcv2aChangeSequence :: Maybe Integer
+    -- ^ Optional change sequence number for delta certificate tracking.
   }
   deriving (Show, Eq)
 
 -- * Component Attributes
 
--- | Component Identifier attribute (v1)
+-- | Component Identifier attribute (v1).
+--
+-- Wraps a 'ComponentIdentifier' with an optional timestamp
+-- (TCG PCP v2.1, Section 3.2).
 data ComponentIdentifierAttr = ComponentIdentifierAttr
-  { ciaIdentifier :: ComponentIdentifier,
-    ciaTimestamp :: Maybe B.ByteString
+  { ciaIdentifier :: ComponentIdentifier
+    -- ^ The component identifier data.
+  , ciaTimestamp :: Maybe B.ByteString
+    -- ^ Optional timestamp of when the component was identified.
   }
   deriving (Show, Eq)
 
--- | Component Identifier attribute (v2)
+-- | Component Identifier attribute (v2).
+--
+-- Extends v1 with optional certification information for the component
+-- (TCG PCP v2.1, Section 3.2).
 data ComponentIdentifierV2Attr = ComponentIdentifierV2Attr
-  { ci2aIdentifier :: ComponentIdentifierV2,
-    ci2aTimestamp :: Maybe B.ByteString,
-    ci2aCertificationInfo :: Maybe B.ByteString
+  { ci2aIdentifier :: ComponentIdentifierV2
+    -- ^ The v2 component identifier data.
+  , ci2aTimestamp :: Maybe B.ByteString
+    -- ^ Optional timestamp of when the component was identified.
+  , ci2aCertificationInfo :: Maybe B.ByteString
+    -- ^ Optional DER-encoded certification information for the component.
   }
   deriving (Show, Eq)
 
--- | Component Class attribute
+-- | Component Class attribute.
+--
+-- Describes the type\/class of a hardware component using a registry-based
+-- classification scheme.
 data ComponentClassAttr = ComponentClassAttr
-  { ccaClass :: ComponentClass,
-    ccaDescription :: Maybe B.ByteString
+  { ccaClass :: ComponentClass
+    -- ^ The component class identifier.
+  , ccaDescription :: Maybe B.ByteString
+    -- ^ Optional human-readable description of the component class.
   }
   deriving (Show, Eq)
 
 -- * Platform Information Attributes
 
--- | Platform Manufacturer attribute
+-- | Platform Manufacturer attribute.
+--
+-- Contains the UTF-8 encoded name of the platform manufacturer.
 newtype PlatformManufacturerAttr = PlatformManufacturerAttr
   { pmaManufacturer :: B.ByteString
+    -- ^ UTF-8 encoded platform manufacturer name.
   }
   deriving (Show, Eq)
 
--- | Platform Model attribute
+-- | Platform Model attribute.
+--
+-- Contains the UTF-8 encoded model name\/number of the platform.
 newtype PlatformModelAttr = PlatformModelAttr
   { pmdaModel :: B.ByteString
+    -- ^ UTF-8 encoded platform model name.
   }
   deriving (Show, Eq)
 
--- | Platform Serial attribute
+-- | Platform Serial attribute.
+--
+-- Contains the UTF-8 encoded serial number of the platform.
 newtype PlatformSerialAttr = PlatformSerialAttr
   { psaSerial :: B.ByteString
+    -- ^ UTF-8 encoded platform serial number.
   }
   deriving (Show, Eq)
 
--- | Platform Version attribute
+-- | Platform Version attribute.
+--
+-- Contains the UTF-8 encoded version string of the platform.
 newtype PlatformVersionAttr = PlatformVersionAttr
   { pvaVersion :: B.ByteString
+    -- ^ UTF-8 encoded platform version string.
   }
   deriving (Show, Eq)
 
 -- * TPM Attributes
 
--- | TPM Model attribute
+-- | TPM Model attribute.
+--
+-- Contains the model identifier of the Trusted Platform Module.
 newtype TPMModelAttr = TPMModelAttr
   { tmaModel :: B.ByteString
+    -- ^ Raw bytes identifying the TPM model.
   }
   deriving (Show, Eq)
 
--- | TPM Version attribute
+-- | TPM Version attribute.
+--
+-- Wraps a 'TPMVersion' describing the TPM firmware version.
 newtype TPMVersionAttr = TPMVersionAttr
   { tvaVersion :: TPMVersion
+    -- ^ The TPM version information.
   }
   deriving (Show, Eq)
 
--- | TPM Specification attribute
+-- | TPM Specification attribute.
+--
+-- Wraps a 'TPMSpecification' describing the TPM family, level, and revision.
 newtype TPMSpecificationAttr = TPMSpecificationAttr
   { tsaSpecification :: TPMSpecification
+    -- ^ The TPM specification details (family, level, revision).
   }
   deriving (Show, Eq)
 
 -- * Certificate Extension Attributes
 
--- | Relevant Credentials attribute
+-- | Relevant Credentials attribute.
+--
+-- References other credentials that are relevant to this platform certificate.
 data RelevantCredentialsAttr = RelevantCredentialsAttr
-  { rcaCredentials :: [B.ByteString],
-    rcaCritical :: Bool
+  { rcaCredentials :: [B.ByteString]
+    -- ^ List of DER-encoded credential references.
+  , rcaCritical :: Bool
+    -- ^ Whether this attribute is marked as critical in the certificate.
   }
   deriving (Show, Eq)
 
--- | Relevant Manifests attribute
+-- | Relevant Manifests attribute.
+--
+-- References reference integrity manifests relevant to this platform certificate.
 data RelevantManifestsAttr = RelevantManifestsAttr
-  { rmaManifests :: [B.ByteString],
-    rmaCritical :: Bool
+  { rmaManifests :: [B.ByteString]
+    -- ^ List of DER-encoded manifest references.
+  , rmaCritical :: Bool
+    -- ^ Whether this attribute is marked as critical in the certificate.
   }
   deriving (Show, Eq)
 
--- | Virtual Platform attribute
+-- | Virtual Platform attribute.
+--
+-- Indicates whether the platform is a virtual machine and optionally
+-- provides hypervisor information.
 data VirtualPlatformAttr = VirtualPlatformAttr
-  { vpaIsVirtual :: Bool,
-    vpaHypervisorInfo :: Maybe B.ByteString,
-    vpaCritical :: Bool
+  { vpaIsVirtual :: Bool
+    -- ^ 'True' if the platform is a virtual machine.
+  , vpaHypervisorInfo :: Maybe B.ByteString
+    -- ^ Optional hypervisor identification information.
+  , vpaCritical :: Bool
+    -- ^ Whether this attribute is marked as critical in the certificate.
   }
   deriving (Show, Eq)
 
--- | Multi-Tenant attribute
+-- | Multi-Tenant attribute.
+--
+-- Indicates whether the platform supports multi-tenancy and optionally
+-- provides tenant-specific information.
 data MultiTenantAttr = MultiTenantAttr
-  { mtaIsMultiTenant :: Bool,
-    mtaTenantInfo :: Maybe [B.ByteString],
-    mtaCritical :: Bool
+  { mtaIsMultiTenant :: Bool
+    -- ^ 'True' if the platform supports multi-tenancy.
+  , mtaTenantInfo :: Maybe [B.ByteString]
+    -- ^ Optional list of tenant information entries.
+  , mtaCritical :: Bool
+    -- ^ Whether this attribute is marked as critical in the certificate.
   }
   deriving (Show, Eq)
 
@@ -285,10 +387,11 @@ attributeParserRegistry =
       (tcg_ce_multiTenant, parseMultiTenantAttr)
     ]
 
--- | Parse a TCG attribute from an ASN.1 Attribute using registry lookup
+-- | Parse a TCG attribute from an ASN.1 'Attribute' using registry lookup.
 --
--- This function uses the registry pattern to dispatch parsing based on OID,
--- making it easy to add new attribute types by simply adding entries to the registry.
+-- Dispatches parsing based on the attribute OID using an internal registry.
+-- Unknown OIDs are wrapped as 'TCGOtherAttribute'. Returns a 'Left' error
+-- message if the attribute value cannot be decoded.
 parseTCGAttribute :: Attribute -> Either String TCGAttribute
 parseTCGAttribute attr =
   let oid = attrType attr
@@ -297,7 +400,9 @@ parseTCGAttribute attr =
         Just parser -> parser values
         Nothing -> parseOtherAttr oid values -- Fallback for unknown attributes
 
--- | Encode a TCG attribute to an ASN.1 Attribute
+-- | Encode a 'TCGAttribute' back to an ASN.1 'Attribute'.
+--
+-- Produces the correct OID and DER-encoded value for each attribute variant.
 encodeTCGAttribute :: TCGAttribute -> Attribute
 encodeTCGAttribute tcgAttr =
   case tcgAttr of
@@ -329,7 +434,10 @@ encodeTCGAttribute tcgAttr =
     TCGPolicyReference attr -> encodeAttribute tcg_at_policyReference [encodePolicyReferenceAttr attr]
     TCGOtherAttribute oid value -> encodeAttribute oid [[OctetString value]]
 
--- | Lookup a TCG attribute by OID in a list of attributes
+-- | Look up a TCG attribute by OID in a list of ASN.1 'Attribute's.
+--
+-- Returns the first successfully parsed attribute matching the given OID,
+-- or 'Nothing' if no match is found or parsing fails.
 lookupTCGAttribute :: OID -> [Attribute] -> Maybe TCGAttribute
 lookupTCGAttribute targetOID attrs =
   case filter (matchesOID targetOID) attrs of
@@ -341,7 +449,11 @@ lookupTCGAttribute targetOID attrs =
     matchesOID :: OID -> Attribute -> Bool
     matchesOID oid attr = attrType attr == oid
 
--- | Validate a list of TCG attributes for compliance
+-- | Validate a list of TCG attributes for basic compliance.
+--
+-- Checks that required attributes are present and that individual attribute
+-- values are well-formed (e.g., non-empty strings, valid ranges).
+-- Returns a list of human-readable error messages, empty if all checks pass.
 validateTCGAttributes :: [TCGAttribute] -> [String]
 validateTCGAttributes attrs =
   checkRequiredAttributes attrs
@@ -349,7 +461,9 @@ validateTCGAttributes attrs =
 
 -- * Attribute Utilities
 
--- | Convert attribute OID to TCG attribute type identifier
+-- | Convert an attribute OID to its human-readable TCG attribute type name.
+--
+-- Returns @\"unknown\"@ for unrecognised OIDs.
 attributeOIDToType :: OID -> String
 attributeOIDToType oid
   | oid == tcg_at_platformConfiguration = "platformConfiguration"
@@ -366,7 +480,9 @@ attributeOIDToType oid
   | oid == tcg_at_tpmSpecification = "tpmSpecification"
   | otherwise = "unknown"
 
--- | Convert TCG attribute type to OID
+-- | Convert a TCG attribute type name to its corresponding OID.
+--
+-- Returns 'Nothing' for unrecognised type names.
 attributeTypeToOID :: String -> Maybe OID
 attributeTypeToOID typeName =
   case typeName of
@@ -384,7 +500,9 @@ attributeTypeToOID typeName =
     "tpmSpecification" -> Just tcg_at_tpmSpecification
     _ -> Nothing
 
--- | Check if an attribute is required in Platform Certificates
+-- | Check whether an attribute OID is required in TCG Platform Certificates.
+--
+-- Currently, @platformConfiguration_v2@ and @componentIdentifier_v2@ are required.
 isRequiredAttribute :: OID -> Bool
 isRequiredAttribute oid = oid `elem` requiredAttributes
   where
@@ -393,7 +511,9 @@ isRequiredAttribute oid = oid `elem` requiredAttributes
         tcg_at_componentIdentifier_v2
       ]
 
--- | Check if an attribute is marked as critical
+-- | Check whether an attribute OID should be marked as critical.
+--
+-- Currently, @relevantCredentials@ and @relevantManifests@ are critical.
 isCriticalAttribute :: OID -> Bool
 isCriticalAttribute oid = oid `elem` criticalAttributes
   where
@@ -402,8 +522,9 @@ isCriticalAttribute oid = oid `elem` criticalAttributes
         tcg_ce_relevantManifests
       ]
 
--- Helper functions for parsing individual attribute types
-
+-- | Parse a Platform Configuration v1 attribute from ASN.1 attribute values.
+--
+-- Expects a single OctetString containing DER-encoded 'PlatformConfiguration'.
 parsePlatformConfigAttr :: [[AttributeValue]] -> Either String TCGAttribute
 parsePlatformConfigAttr [[OctetString bs]] = do
   -- Parse ASN.1 DER encoded Platform Configuration
@@ -416,6 +537,9 @@ parsePlatformConfigAttr [[OctetString bs]] = do
           Right $ TCGPlatformConfiguration (PlatformConfigurationAttr config Nothing Nothing)
 parsePlatformConfigAttr _ = Left "Invalid Platform Configuration attribute format - expected single OctetString"
 
+-- | Parse a Platform Configuration v2 attribute from ASN.1 attribute values.
+--
+-- Expects a single OctetString containing DER-encoded 'PlatformConfigurationV2'.
 parsePlatformConfigV2Attr :: [[AttributeValue]] -> Either String TCGAttribute
 parsePlatformConfigV2Attr [[OctetString bs]] = case decodeASN1' DER bs of
   Left err -> Left $ "Failed to decode Platform Configuration v2 ASN.1: " ++ show err
@@ -426,6 +550,9 @@ parsePlatformConfigV2Attr [[OctetString bs]] = case decodeASN1' DER bs of
         Right $ TCGPlatformConfigurationV2 (PlatformConfigurationV2Attr config Nothing Nothing Nothing)
 parsePlatformConfigV2Attr _ = Left "Invalid Platform Configuration v2 attribute format - expected single OctetString"
 
+-- | Parse a Component Identifier v1 attribute from ASN.1 attribute values.
+--
+-- Expects a single OctetString containing DER-encoded 'ComponentIdentifier'.
 parseComponentIdAttr :: [[AttributeValue]] -> Either String TCGAttribute
 parseComponentIdAttr [[OctetString bs]] = case decodeASN1' DER bs of
   Left err -> Left $ "Failed to decode Component Identifier ASN.1: " ++ show err
@@ -436,6 +563,9 @@ parseComponentIdAttr [[OctetString bs]] = case decodeASN1' DER bs of
         Right $ TCGComponentIdentifier (ComponentIdentifierAttr identifier Nothing)
 parseComponentIdAttr _ = Left "Invalid Component Identifier attribute format - expected single OctetString"
 
+-- | Parse a Component Identifier v2 attribute from ASN.1 attribute values.
+--
+-- Expects a single OctetString containing DER-encoded 'ComponentIdentifierV2'.
 parseComponentIdV2Attr :: [[AttributeValue]] -> Either String TCGAttribute
 parseComponentIdV2Attr [[OctetString bs]] = case decodeASN1' DER bs of
   Left err -> Left $ "Failed to decode Component Identifier v2 ASN.1: " ++ show err
@@ -484,6 +614,9 @@ parseTPMModelAttr :: [[AttributeValue]] -> Either String TCGAttribute
 parseTPMModelAttr [[OctetString bs]] = Right $ TCGTPMModel (TPMModelAttr bs)
 parseTPMModelAttr _ = Left "Invalid TPM Model attribute"
 
+-- | Parse a TPM Version attribute from ASN.1 attribute values.
+--
+-- Expects a single OctetString containing DER-encoded 'TPMVersion'.
 parseTPMVersionAttr :: [[AttributeValue]] -> Either String TCGAttribute
 parseTPMVersionAttr [[OctetString bs]] = case decodeASN1' DER bs of
   Left err -> Left $ "Failed to decode TPM Version ASN.1: " ++ show err
@@ -494,6 +627,9 @@ parseTPMVersionAttr [[OctetString bs]] = case decodeASN1' DER bs of
         Right $ TCGTPMVersion (TPMVersionAttr version)
 parseTPMVersionAttr _ = Left "Invalid TPM Version attribute format - expected single OctetString"
 
+-- | Parse a TPM Specification attribute from ASN.1 attribute values.
+--
+-- Expects a single OctetString containing DER-encoded 'TPMSpecification'.
 parseTPMSpecAttr :: [[AttributeValue]] -> Either String TCGAttribute
 parseTPMSpecAttr [[OctetString bs]] = case decodeASN1' DER bs of
   Left err -> Left $ "Failed to decode TPM Specification ASN.1: " ++ show err
@@ -504,6 +640,10 @@ parseTPMSpecAttr [[OctetString bs]] = case decodeASN1' DER bs of
         Right $ TCGTPMSpecification (TPMSpecificationAttr spec)
 parseTPMSpecAttr _ = Left "Invalid TPM Specification attribute format - expected single OctetString"
 
+-- | Parse a Relevant Credentials attribute from ASN.1 attribute values.
+--
+-- Expects a single OctetString containing a DER-encoded SEQUENCE of
+-- credential references with an optional critical flag.
 parseRelevantCredAttr :: [[AttributeValue]] -> Either String TCGAttribute
 parseRelevantCredAttr [[OctetString bs]] = case decodeASN1' DER bs of
   Left err -> Left $ "Failed to decode Relevant Credentials ASN.1: " ++ show err
@@ -835,67 +975,107 @@ validateSingleAttribute attr =
 
 -- * Extended Platform Attributes (IWG v1.1)
 
--- | Platform Configuration URI attribute
+-- | Platform Configuration URI attribute (IWG v1.1).
+--
+-- Points to an external resource containing additional platform
+-- configuration details.
 data PlatformConfigUriAttr = PlatformConfigUriAttr
-  { pcuUri :: B.ByteString,
-    pcuDescription :: Maybe B.ByteString
+  { pcuUri :: B.ByteString
+    -- ^ URI pointing to the platform configuration resource.
+  , pcuDescription :: Maybe B.ByteString
+    -- ^ Optional human-readable description of the configuration URI.
   }
   deriving (Show, Eq)
 
--- | Platform Class attribute
+-- | Platform Class attribute (IWG v1.1).
+--
+-- Identifies the class\/category of the platform (e.g., server, client, embedded).
 data PlatformClassAttr = PlatformClassAttr
-  { pcaClass :: B.ByteString,
-    pcaDescription :: Maybe B.ByteString
+  { pcaClass :: B.ByteString
+    -- ^ The platform class identifier.
+  , pcaDescription :: Maybe B.ByteString
+    -- ^ Optional human-readable description of the platform class.
   }
   deriving (Show, Eq)
 
--- | Certification Level attribute (1-7)
+-- | Certification Level attribute (IWG v1.1).
+--
+-- Indicates the certification assurance level, ranging from 1 (lowest) to 7 (highest).
 data CertificationLevelAttr = CertificationLevelAttr
-  { claLevel :: Int,
-    claDescription :: Maybe B.ByteString
+  { claLevel :: Int
+    -- ^ Certification level, valid range 1-7.
+  , claDescription :: Maybe B.ByteString
+    -- ^ Optional human-readable description of the certification level.
   }
   deriving (Show, Eq)
 
--- | Platform Qualifiers attribute
+-- | Platform Qualifiers attribute (IWG v1.1).
+--
+-- Provides a list of platform-specific qualifiers describing additional
+-- platform properties or capabilities.
 data PlatformQualifiersAttr = PlatformQualifiersAttr
-  { pqaQualifiers :: [B.ByteString],
-    pqaDescription :: Maybe B.ByteString
+  { pqaQualifiers :: [B.ByteString]
+    -- ^ List of DER-encoded platform qualifier values.
+  , pqaDescription :: Maybe B.ByteString
+    -- ^ Optional human-readable description of the qualifiers.
   }
   deriving (Show, Eq)
 
--- | Root of Trust attribute
+-- | Root of Trust attribute (IWG v1.1).
+--
+-- Describes the platform's root of trust measurement, including the
+-- hash algorithm used to compute it.
 data RootOfTrustAttr = RootOfTrustAttr
-  { rotMeasurement :: B.ByteString,
-    rotAlgorithm :: OID,
-    rotDescription :: Maybe B.ByteString
+  { rotMeasurement :: B.ByteString
+    -- ^ The root of trust measurement hash value.
+  , rotAlgorithm :: OID
+    -- ^ OID of the hash algorithm used for the measurement.
+  , rotDescription :: Maybe B.ByteString
+    -- ^ Optional human-readable description of the root of trust.
   }
   deriving (Show, Eq)
 
--- | RTM Type attribute (1=BIOS, 2=UEFI, 3=Other)
+-- | RTM (Root of Trust for Measurement) Type attribute (IWG v1.1).
+--
+-- Identifies the type of RTM: 1 = BIOS, 2 = UEFI, 3 = Other.
 data RTMTypeAttr = RTMTypeAttr
-  { rtmType :: Int,
-    rtmDescription :: Maybe B.ByteString
+  { rtmType :: Int
+    -- ^ RTM type identifier: 1 (BIOS), 2 (UEFI), or 3 (Other).
+  , rtmDescription :: Maybe B.ByteString
+    -- ^ Optional human-readable description of the RTM type.
   }
   deriving (Show, Eq)
 
--- | Boot Mode attribute
+-- | Boot Mode attribute (IWG v1.1).
+--
+-- Describes the boot mode of the platform (e.g., normal, safe, recovery).
 data BootModeAttr = BootModeAttr
-  { bmMode :: B.ByteString,
-    bmDescription :: Maybe B.ByteString
+  { bmMode :: B.ByteString
+    -- ^ The boot mode identifier.
+  , bmDescription :: Maybe B.ByteString
+    -- ^ Optional human-readable description of the boot mode.
   }
   deriving (Show, Eq)
 
--- | Firmware Version attribute
+-- | Firmware Version attribute (IWG v1.1).
+--
+-- Contains the firmware version string for the platform.
 data FirmwareVersionAttr = FirmwareVersionAttr
-  { fvVersion :: B.ByteString,
-    fvDescription :: Maybe B.ByteString
+  { fvVersion :: B.ByteString
+    -- ^ The firmware version string.
+  , fvDescription :: Maybe B.ByteString
+    -- ^ Optional human-readable description of the firmware version.
   }
   deriving (Show, Eq)
 
--- | Policy Reference attribute
+-- | Policy Reference attribute (IWG v1.1).
+--
+-- Points to an external policy document governing this platform certificate.
 data PolicyReferenceAttr = PolicyReferenceAttr
-  { prUri :: B.ByteString,
-    prDescription :: Maybe B.ByteString
+  { prUri :: B.ByteString
+    -- ^ URI pointing to the policy reference document.
+  , prDescription :: Maybe B.ByteString
+    -- ^ Optional human-readable description of the policy reference.
   }
   deriving (Show, Eq)
 

@@ -51,11 +51,17 @@ import qualified Data.ByteString as B
 -- Basic component identification without hierarchical relationships.
 data ComponentIdentifier = ComponentIdentifier
   { ciManufacturer :: B.ByteString,
+    -- ^ Manufacturer name (UTF8String).
     ciModel :: B.ByteString,
+    -- ^ Model identifier (UTF8String).
     ciSerial :: Maybe B.ByteString,
+    -- ^ Serial number, if available.
     ciRevision :: Maybe B.ByteString,
+    -- ^ Hardware revision, if available.
     ciManufacturerSerial :: Maybe B.ByteString,
+    -- ^ Manufacturer-assigned serial number, if available.
     ciManufacturerRevision :: Maybe B.ByteString
+    -- ^ Manufacturer-assigned revision, if available.
   }
   deriving (Show, Eq)
 
@@ -64,13 +70,21 @@ data ComponentIdentifier = ComponentIdentifier
 -- Enhanced component identification with class and address information.
 data ComponentIdentifierV2 = ComponentIdentifierV2
   { ci2Manufacturer :: B.ByteString,
+    -- ^ Manufacturer name (UTF8String).
     ci2Model :: B.ByteString,
+    -- ^ Model identifier (UTF8String).
     ci2Serial :: Maybe B.ByteString,
+    -- ^ Serial number, if available.
     ci2Revision :: Maybe B.ByteString,
+    -- ^ Hardware revision, if available.
     ci2ManufacturerSerial :: Maybe B.ByteString,
+    -- ^ Manufacturer-assigned serial number, if available.
     ci2ManufacturerRevision :: Maybe B.ByteString,
+    -- ^ Manufacturer-assigned revision, if available.
     ci2ComponentClass :: ComponentClass,
+    -- ^ Component class category (see TCG PCP v2.1, Section 6.1).
     ci2ComponentAddress :: Maybe ComponentAddress
+    -- ^ Physical or logical address within the platform, if available.
   }
   deriving (Show, Eq)
 
@@ -79,30 +93,53 @@ data ComponentIdentifierV2 = ComponentIdentifierV2
 -- Defines the type/category of a platform component.
 data ComponentClass
   = ComponentMotherboard
+  -- ^ Motherboard or mainboard (value 1).
   | ComponentCPU
+  -- ^ Central processing unit (value 2).
   | ComponentMemory
+  -- ^ RAM or other memory module (value 3).
   | ComponentHardDrive
+  -- ^ Hard disk drive or solid-state drive (value 4).
   | ComponentNetworkInterface
+  -- ^ Network interface controller (value 5).
   | ComponentGraphicsCard
+  -- ^ Graphics or video adapter (value 6).
   | ComponentSoundCard
+  -- ^ Sound or audio adapter (value 7).
   | ComponentOpticalDrive
+  -- ^ Optical disc drive (value 8).
   | ComponentKeyboard
+  -- ^ Keyboard input device (value 9).
   | ComponentMouse
+  -- ^ Mouse or pointing device (value 10).
   | ComponentDisplay
+  -- ^ Display or monitor (value 11).
   | ComponentSpeaker
+  -- ^ Speaker or audio output device (value 12).
   | ComponentMicrophone
+  -- ^ Microphone or audio input device (value 13).
   | ComponentCamera
+  -- ^ Camera or imaging device (value 14).
   | ComponentTouchscreen
+  -- ^ Touchscreen input device (value 15).
   | ComponentFingerprint
+  -- ^ Fingerprint reader or biometric sensor (value 16).
   | ComponentBluetooth
+  -- ^ Bluetooth wireless interface (value 21).
   | ComponentWifi
+  -- ^ Wi-Fi wireless network interface (value 22).
   | ComponentEthernet
+  -- ^ Wired Ethernet network interface (value 23).
   | ComponentUSB
+  -- ^ USB bus controller (value 31).
   | ComponentFireWire
+  -- ^ IEEE 1394 FireWire bus controller (value 32).
   | ComponentSCSI
+  -- ^ SCSI bus controller (value 33).
   | ComponentIDE
-  | -- | For custom component classes
-    ComponentOther OID
+  -- ^ IDE\/ATA bus controller (value 34).
+  | ComponentOther OID
+  -- ^ Custom component class identified by OID.
   deriving (Show, Eq)
 
 -- | Component Address structure
@@ -110,20 +147,30 @@ data ComponentClass
 -- Physical or logical address of a component within the platform.
 data ComponentAddress = ComponentAddress
   { caAddressType :: ComponentAddressType,
+    -- ^ The type of address (PCI, USB, MAC, etc.).
     caAddress :: B.ByteString
+    -- ^ The raw address value as an octet string.
   }
   deriving (Show, Eq)
 
 -- | Component Address Type enumeration
 data ComponentAddressType
   = AddressPCI
+  -- ^ PCI bus address (value 1).
   | AddressUSB
+  -- ^ USB bus address (value 2).
   | AddressSATA
+  -- ^ SATA bus address (value 3).
   | AddressI2C
+  -- ^ I2C bus address (value 4).
   | AddressSPI
+  -- ^ SPI bus address (value 5).
   | AddressMAC
+  -- ^ MAC (Ethernet hardware) address (value 6).
   | AddressLogical
+  -- ^ Logical or software-defined address (value 7).
   | AddressOther B.ByteString
+  -- ^ Other address type with a custom descriptor (value 99).
   deriving (Show, Eq)
 
 -- | Component Hierarchy structure
@@ -131,7 +178,9 @@ data ComponentAddressType
 -- Represents the hierarchical relationship between components.
 data ComponentHierarchy = ComponentHierarchy
   { chRootComponents :: [ComponentReference],
+    -- ^ Top-level component references at the root of the hierarchy.
     chComponentTree :: ComponentTree
+    -- ^ Tree structure describing component parent-child relationships.
   }
   deriving (Show, Eq)
 
@@ -140,8 +189,11 @@ data ComponentHierarchy = ComponentHierarchy
 -- Tree representation of component relationships.
 data ComponentTree = ComponentTree
   { ctComponent :: ComponentIdentifierV2,
+    -- ^ The component at this tree node.
     ctChildren :: [ComponentTree],
+    -- ^ Child component subtrees.
     ctProperties :: ComponentProperties
+    -- ^ Properties associated with this component node.
   }
   deriving (Show, Eq)
 
@@ -150,8 +202,11 @@ data ComponentTree = ComponentTree
 -- Reference to a component in the hierarchy.
 data ComponentReference = ComponentReference
   { crCertificateSerial :: Integer,
+    -- ^ Serial number of the certificate containing this component.
     crComponentIndex :: Int,
+    -- ^ Zero-based index of the component within the certificate.
     crComponentIdentifier :: ComponentIdentifierV2
+    -- ^ Full component identifier for the referenced component.
   }
   deriving (Show, Eq)
 
@@ -160,8 +215,11 @@ data ComponentReference = ComponentReference
 -- Additional properties and metadata for components.
 data ComponentProperties = ComponentProperties
   { cpMeasurements :: [ComponentMeasurement],
+    -- ^ Cryptographic measurements of the component state.
     cpDescriptor :: Maybe ComponentDescriptor,
+    -- ^ Human-readable descriptor, if available.
     cpRelations :: [ComponentRelation]
+    -- ^ Relationships this component has with other components.
   }
   deriving (Show, Eq)
 
@@ -170,18 +228,26 @@ data ComponentProperties = ComponentProperties
 -- Cryptographic measurements of component state.
 data ComponentMeasurement = ComponentMeasurement
   { cmDigestAlgorithm :: OID,
+    -- ^ OID of the digest algorithm used (e.g. SHA-256).
     cmDigestValue :: B.ByteString,
+    -- ^ The digest value (hash) of the measured component.
     cmMeasurementType :: MeasurementType
+    -- ^ Category of this measurement.
   }
   deriving (Show, Eq)
 
 -- | Measurement Type enumeration
 data MeasurementType
   = MeasurementFirmware
+  -- ^ Firmware measurement (e.g. BIOS, UEFI).
   | MeasurementSoftware
+  -- ^ Software measurement (e.g. OS loader).
   | MeasurementConfiguration
+  -- ^ Configuration data measurement.
   | MeasurementIdentity
+  -- ^ Identity or attestation measurement.
   | MeasurementOther B.ByteString
+  -- ^ Other measurement type with a custom descriptor.
   deriving (Show, Eq)
 
 -- | Component Descriptor structure
@@ -189,9 +255,11 @@ data MeasurementType
 -- Human-readable description and metadata.
 data ComponentDescriptor = ComponentDescriptor
   { cdDescription :: B.ByteString,
+    -- ^ Human-readable description of the component.
     cdVendorInfo :: Maybe B.ByteString,
-    -- | Key-value pairs
+    -- ^ Vendor-specific information, if available.
     cdProperties :: [(B.ByteString, B.ByteString)]
+    -- ^ Key-value pairs of additional component properties.
   }
   deriving (Show, Eq)
 
@@ -200,20 +268,30 @@ data ComponentDescriptor = ComponentDescriptor
 -- Describes relationships between components.
 data ComponentRelation = ComponentRelation
   { crRelationType :: ComponentRelationType,
+    -- ^ The type of relationship (parent, child, dependency, etc.).
     crTargetComponent :: ComponentReference,
+    -- ^ The other component involved in this relationship.
     crRelationProperties :: [(B.ByteString, B.ByteString)]
+    -- ^ Key-value pairs of additional relationship metadata.
   }
   deriving (Show, Eq)
 
 -- | Component Relation Type enumeration
 data ComponentRelationType
   = RelationParentOf
+  -- ^ This component is the parent of the target.
   | RelationChildOf
+  -- ^ This component is a child of the target.
   | RelationDependsOn
+  -- ^ This component depends on the target.
   | RelationConflictsWith
+  -- ^ This component conflicts with the target.
   | RelationReplaces
+  -- ^ This component replaces the target.
   | RelationReplacedBy
+  -- ^ This component is replaced by the target.
   | RelationOther B.ByteString
+  -- ^ Other relationship type with a custom descriptor.
   deriving (Show, Eq)
 
 -- | Component Dependency structure
@@ -221,27 +299,33 @@ data ComponentRelationType
 -- Describes dependency relationships between components.
 data ComponentDependency = ComponentDependency
   { cdDependentComponent :: ComponentReference,
+    -- ^ The component that has the dependency.
     cdRequiredComponent :: ComponentReference,
+    -- ^ The component that is depended upon.
     cdDependencyType :: DependencyType,
+    -- ^ The nature of the dependency relationship.
     cdVersionConstraints :: Maybe B.ByteString
+    -- ^ Version constraint expression, if applicable.
   }
   deriving (Show, Eq)
 
 -- | Dependency Type enumeration
 data DependencyType
   = DependencyRequired
+  -- ^ The dependent component cannot function without the required component.
   | DependencyOptional
+  -- ^ The dependent component can function without the required component.
   | DependencyConditional
+  -- ^ The dependency applies only under certain conditions.
   | DependencyIncompatible
+  -- ^ The two components are mutually incompatible.
   deriving (Show, Eq, Enum)
 
--- * Utility Functions
-
--- | Check if a component belongs to a specific class
+-- | Check if a component belongs to a specific class.
 isComponentClass :: ComponentClass -> ComponentIdentifierV2 -> Bool
 isComponentClass targetClass component = ci2ComponentClass component == targetClass
 
--- | Get component by address from a component hierarchy
+-- | Get a component by address from a component hierarchy.
 getComponentByAddress :: ComponentAddress -> ComponentHierarchy -> Maybe ComponentIdentifierV2
 getComponentByAddress addr hierarchy = searchInTree addr (chComponentTree hierarchy)
   where
@@ -259,7 +343,8 @@ getComponentByAddress addr hierarchy = searchInTree addr (chComponentTree hierar
           Just result -> Just result
           Nothing -> searchInChildren target ts
 
--- | Build a component tree from a list of components
+-- | Build a component tree from a list of components.
+-- The first element is used as the root node.
 buildComponentTree :: [ComponentIdentifierV2] -> ComponentTree
 buildComponentTree components =
   case components of
@@ -268,7 +353,8 @@ buildComponentTree components =
   where
     defaultProperties = ComponentProperties [] Nothing []
 
--- | Validate component hierarchy for consistency
+-- | Validate a component hierarchy for consistency.
+-- Returns a list of error messages; an empty list indicates a valid hierarchy.
 validateComponentHierarchy :: ComponentHierarchy -> [String]
 validateComponentHierarchy hierarchy =
   validateTree (chComponentTree hierarchy)
@@ -284,7 +370,8 @@ validateComponentHierarchy hierarchy =
       | B.null (ci2Model component) = ["Component missing model"]
       | otherwise = []
 
--- ASN.1 instances
+-- $asn1
+-- ASN.1 encoding and decoding instances for component types.
 
 instance ASN1Object ComponentIdentifier where
   toASN1 (ComponentIdentifier manufacturer model serial revision mfgSerial mfgRevision) xs =
@@ -320,7 +407,7 @@ instance ASN1Object ComponentIdentifier where
       parseOptionalFields _ _ _ _ _ _ _ = Left "ComponentIdentifier: Invalid ASN1 structure"
   fromASN1 _ = Left "ComponentIdentifier: Invalid ASN1 structure"
 
--- Helper function to parse ComponentIdentifierV2 optional fields
+-- | Parse the optional fields of a 'ComponentIdentifierV2' from an ASN.1 stream.
 parseComponentIdentifierV2Fields ::
   B.ByteString ->
   B.ByteString ->
@@ -371,12 +458,14 @@ parseComponentString _ (OctetString bs) = Right bs
 parseComponentString _ (ASN1String (ASN1CharacterString _ bs)) = Right bs
 parseComponentString label _ = Left (label ++ ": expected UTF8String")
 
+-- | Try to extract a 'B.ByteString' from an ASN.1 value, returning 'Nothing' for 'Null'.
 parseOptionalStringValue :: ASN1 -> Maybe B.ByteString
 parseOptionalStringValue Null = Nothing
 parseOptionalStringValue (OctetString bs) = Just bs
 parseOptionalStringValue (ASN1String (ASN1CharacterString _ bs)) = Just bs
 parseOptionalStringValue _ = Nothing
 
+-- | Parse an optional string field, wrapping the result in 'Right'.
 parseOptionalString :: ASN1 -> Either String (Maybe B.ByteString)
 parseOptionalString v = Right (parseOptionalStringValue v)
 

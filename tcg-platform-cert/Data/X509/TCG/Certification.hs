@@ -118,97 +118,130 @@ type URIMAX = Int  -- Maximum URI size
 
 -- * FIPS 140-2/3 Support
 
--- | FIPS Version enumeration
+-- | FIPS 140 standard version.
 data FIPSVersion
-  = FIPS_140_1  -- Legacy FIPS 140-1
-  | FIPS_140_2  -- Current FIPS 140-2
-  | FIPS_140_3  -- New FIPS 140-3
+  = FIPS_140_1  -- ^ Legacy FIPS 140-1 (withdrawn).
+  | FIPS_140_2  -- ^ FIPS 140-2 (widely deployed).
+  | FIPS_140_3  -- ^ FIPS 140-3 (current standard, ISO 19790 aligned).
   deriving (Show, Eq, Enum, Bounded, Data, Typeable)
 
--- | FIPS 140-2/3 Security Levels
+-- | FIPS 140-2\/3 security levels (1–4).
 data SecurityLevel
-  = SLLevel1  -- Level 1: Basic security requirements
-  | SLLevel2  -- Level 2: Enhanced physical security
-  | SLLevel3  -- Level 3: Tamper-evident physical security
-  | SLLevel4  -- Level 4: Tamper-active physical security
+  = SLLevel1  -- ^ Level 1: basic security requirements, no physical security.
+  | SLLevel2  -- ^ Level 2: tamper-evidence and role-based authentication.
+  | SLLevel3  -- ^ Level 3: tamper-resistance and identity-based authentication.
+  | SLLevel4  -- ^ Level 4: complete envelope of protection, environmental failure protection.
   deriving (Show, Eq, Enum, Bounded, Data, Typeable)
 
--- | FIPS Level certification (simplified for ASN.1 compliance)
+-- | FIPS 140 certification level as encoded in @tBBSecurityAssertions@.
+--
+-- Corresponds to the @FIPSLevel@ ASN.1 type in TCG PCP v2.1 §3.1.4.
 data FIPSLevel = FIPSLevel
-  { flVersion :: !IA5String      -- SIZE (1..STRMAX) - "140-1", "140-2", or "140-3"
-  , flLevel   :: !SecurityLevel  -- REQUIRED
-  , flPlus    :: !Bool           -- DEFAULT FALSE
+  { flVersion :: !IA5String
+    -- ^ FIPS standard version string: @\"140-1\"@, @\"140-2\"@, or @\"140-3\"@.
+  , flLevel   :: !SecurityLevel
+    -- ^ Security level (1–4). REQUIRED.
+  , flPlus    :: !Bool
+    -- ^ FIPS Plus augmentation (DEFAULT FALSE, omitted in DER when False).
   } deriving (Show, Eq, Data, Typeable)
 
 -- * Common Criteria Support
 
--- | Evaluation Assurance Level (complies with lines 387-394)
+-- | Common Criteria Evaluation Assurance Level (EAL 1–7).
+--
+-- Defined as @EvaluationAssuranceLevel@ ENUMERATED in TCG PCP v2.1 §3.1.4.
 data EvaluationAssuranceLevel
-  = EALLevel1  -- level1 (1)
-  | EALLevel2  -- level2 (2)
-  | EALLevel3  -- level3 (3)
-  | EALLevel4  -- level4 (4)
-  | EALLevel5  -- level5 (5)
-  | EALLevel6  -- level6 (6)
-  | EALLevel7  -- level7 (7)
+  = EALLevel1  -- ^ EAL1: functionally tested.
+  | EALLevel2  -- ^ EAL2: structurally tested.
+  | EALLevel3  -- ^ EAL3: methodically tested and checked.
+  | EALLevel4  -- ^ EAL4: methodically designed, tested, and reviewed.
+  | EALLevel5  -- ^ EAL5: semiformally designed and tested.
+  | EALLevel6  -- ^ EAL6: semiformally verified design and tested.
+  | EALLevel7  -- ^ EAL7: formally verified design and tested.
   deriving (Show, Eq, Enum, Bounded, Data, Typeable)
 
--- | Evaluation Status (complies with lines 409-412)
+-- | Common Criteria evaluation status.
+--
+-- Defined as @EvaluationStatus@ ENUMERATED in TCG PCP v2.1 §3.1.4.
 data EvaluationStatus
-  = ESDesignedToMeet      -- designedToMeet (0)
-  | ESEvaluationInProgress -- evaluationInProgress (1)
-  | ESEvaluationCompleted  -- evaluationCompleted (2)
+  = ESDesignedToMeet       -- ^ designedToMeet (0): not yet evaluated.
+  | ESEvaluationInProgress -- ^ evaluationInProgress (1): evaluation underway.
+  | ESEvaluationCompleted  -- ^ evaluationCompleted (2): evaluation finished successfully.
   deriving (Show, Eq, Enum, Bounded, Data, Typeable)
 
--- | Strength of Function levels for Common Criteria
+-- | Strength of Function levels for Common Criteria (SOF).
 data StrengthOfFunction
-  = SOFBasic      -- Basic strength of function
-  | SOFMedium     -- Medium strength of function  
-  | SOFHigh       -- High strength of function
+  = SOFBasic   -- ^ Basic strength of function.
+  | SOFMedium  -- ^ Medium strength of function.
+  | SOFHigh    -- ^ High strength of function.
   deriving (Show, Eq, Enum, Bounded, Data, Typeable)
 
--- | Measurement Root Type (complies with lines 365-371)
+-- | Measurement Root Type for the platform's Root of Trust for Measurement.
+--
+-- Defined as @MeasurementRootType@ ENUMERATED in TCG PCP v2.1 §3.1.4.
 data MeasurementRootType
-  = MRTStatic    -- static (0)
-  | MRTDynamic   -- dynamic (1)
-  | MRTNonHost   -- nonHost (2)
-  | MRTHybrid    -- hybrid (3) - capable of static AND dynamic
-  | MRTPhysical  -- physical (4) - anchored by physical TPM
-  | MRTVirtual   -- virtual (5) - TPM is virtualized
+  = MRTStatic    -- ^ static (0): measurement root is in ROM\/firmware.
+  | MRTDynamic   -- ^ dynamic (1): measurement root can be updated.
+  | MRTNonHost   -- ^ nonHost (2): measurement root is external to the host.
+  | MRTHybrid    -- ^ hybrid (3): capable of both static and dynamic measurement.
+  | MRTPhysical  -- ^ physical (4): anchored by a discrete physical TPM.
+  | MRTVirtual   -- ^ virtual (5): TPM is virtualised.
   deriving (Show, Eq, Enum, Bounded, Data, Typeable)
 
--- | URI Reference (complies with lines 404-407)
+-- | URI Reference with optional integrity hash.
+--
+-- Corresponds to @URIReference@ in TCG PCP v2.1 §3.1.3.
 data URIReference = URIReference
-  { urUniformResourceIdentifier :: !IA5String                -- SIZE (1..URIMAX)
-  , urHashAlgorithm            :: !(Maybe AlgorithmIdentifier) -- OPTIONAL
-  , urHashValue                :: !(Maybe BitString)          -- OPTIONAL
+  { urUniformResourceIdentifier :: !IA5String
+    -- ^ The URI string (SIZE 1..URIMAX).
+  , urHashAlgorithm            :: !(Maybe AlgorithmIdentifier)
+    -- ^ Hash algorithm OID for integrity verification (OPTIONAL).
+  , urHashValue                :: !(Maybe BitString)
+    -- ^ Hash value over the URI-referenced content (OPTIONAL).
   } deriving (Show, Eq, Data, Typeable)
 
--- | Common Criteria Measures (complies with lines 376-385)
+-- | Common Criteria Measures as defined in TCG PCP v2.1 §3.1.4.
+--
+-- Encodes the @CommonCriteriaMeasures@ SEQUENCE within @tBBSecurityAssertions@.
 data CommonCriteriaMeasures = CommonCriteriaMeasures
-  { ccmVersion            :: !IA5String                       -- SIZE (1..STRMAX) - "2.2" or "3.1"
-  , ccmAssuranceLevel     :: !EvaluationAssuranceLevel       -- REQUIRED
-  , ccmEvaluationStatus   :: !EvaluationStatus               -- REQUIRED
-  , ccmPlus              :: !Bool                             -- DEFAULT FALSE
-  , ccmStrengthOfFunction :: !(Maybe StrengthOfFunction)      -- OPTIONAL [0] IMPLICIT
-  , ccmProfileOid        :: !(Maybe OID)                     -- OPTIONAL [1] IMPLICIT
-  , ccmProfileUri        :: !(Maybe URIReference)            -- OPTIONAL [2] IMPLICIT
-  , ccmTargetOid         :: !(Maybe OID)                     -- OPTIONAL [3] IMPLICIT
-  , ccmTargetUri         :: !(Maybe URIReference)            -- OPTIONAL [4] IMPLICIT
+  { ccmVersion            :: !IA5String
+    -- ^ Common Criteria version string (e.g., @\"3.1\"@). SIZE (1..STRMAX).
+  , ccmAssuranceLevel     :: !EvaluationAssuranceLevel
+    -- ^ Evaluation Assurance Level (EAL 1–7). REQUIRED.
+  , ccmEvaluationStatus   :: !EvaluationStatus
+    -- ^ Current evaluation status. REQUIRED.
+  , ccmPlus              :: !Bool
+    -- ^ CC Plus augmentation (DEFAULT FALSE).
+  , ccmStrengthOfFunction :: !(Maybe StrengthOfFunction)
+    -- ^ Strength of function rating (OPTIONAL, IMPLICIT tag [0]).
+  , ccmProfileOid        :: !(Maybe OID)
+    -- ^ Protection Profile OID (OPTIONAL, IMPLICIT tag [1]).
+  , ccmProfileUri        :: !(Maybe URIReference)
+    -- ^ Protection Profile URI (OPTIONAL, IMPLICIT tag [2]).
+  , ccmTargetOid         :: !(Maybe OID)
+    -- ^ Security Target OID (OPTIONAL, IMPLICIT tag [3]).
+  , ccmTargetUri         :: !(Maybe URIReference)
+    -- ^ Security Target URI (OPTIONAL, IMPLICIT tag [4]).
   } deriving (Show, Eq, Data, Typeable)
 
--- | Protection Profile information
+-- | Common Criteria Protection Profile (PP) information.
 data ProtectionProfile = ProtectionProfile
-  { ppName :: !B.ByteString          -- Protection Profile name
-  , ppVersion :: !B.ByteString       -- PP version
-  , ppIdentifier :: !(Maybe B.ByteString) -- PP identifier/OID
+  { ppName :: !B.ByteString
+    -- ^ Protection Profile name.
+  , ppVersion :: !B.ByteString
+    -- ^ PP version string.
+  , ppIdentifier :: !(Maybe B.ByteString)
+    -- ^ PP identifier or registered OID (OPTIONAL).
   } deriving (Show, Eq, Data, Typeable)
 
--- | Security Target information
+-- | Common Criteria Security Target (ST) information.
 data SecurityTarget = SecurityTarget
-  { stName :: !B.ByteString          -- Security Target name
-  , stVersion :: !B.ByteString       -- ST version
-  , stIdentifier :: !(Maybe B.ByteString) -- ST identifier
+  { stName :: !B.ByteString
+    -- ^ Security Target name.
+  , stVersion :: !B.ByteString
+    -- ^ ST version string.
+  , stIdentifier :: !(Maybe B.ByteString)
+    -- ^ ST identifier (OPTIONAL).
   } deriving (Show, Eq, Data, Typeable)
 
 -- * Platform Configuration Support
@@ -242,11 +275,11 @@ data ComponentClass = ComponentClass
   , ccComponentClassValue   :: !ComponentClassValue             -- REQUIRED OCTET STRING SIZE(4)
   } deriving (Show, Eq, Data, Typeable)
 
--- | Component Class Registry (complies with lines 599-600)
+-- | Component class registry identifier (TCG PCP v2.1 §3.1.7).
 data ComponentClassRegistry
-  = TcgRegistryComponentClass     -- tcg-registry-componentClass-tcg
-  | IetfRegistryComponentClass    -- tcg-registry-componentClass-ietf
-  | DmtfRegistryComponentClass    -- tcg-registry-componentClass-dmtf
+  = TcgRegistryComponentClass   -- ^ TCG component class registry (2.23.133.18.3.1).
+  | IetfRegistryComponentClass  -- ^ IETF component class registry.
+  | DmtfRegistryComponentClass  -- ^ DMTF component class registry.
   deriving (Show, Eq, Enum, Bounded, Data, Typeable)
 
 -- | Component Address (complies with lines 602-607)
@@ -255,18 +288,18 @@ data ComponentAddress = ComponentAddress
   , caAddressValue :: !UTF8String   -- REQUIRED SIZE (1..STRMAX)
   } deriving (Show, Eq, Data, Typeable)
 
--- | Address Type (complies with lines 606-607)
+-- | Network address type for component identification.
 data AddressType
-  = ATEthernetMac   -- tcg-address-ethernetmac
-  | ATWlanMac      -- tcg-address-wlanmac
-  | ATBluetoothMac -- tcg-address-bluetoothmac
+  = ATEthernetMac   -- ^ Ethernet MAC address (tcg-address-ethernetmac).
+  | ATWlanMac       -- ^ Wireless LAN MAC address (tcg-address-wlanmac).
+  | ATBluetoothMac  -- ^ Bluetooth MAC address (tcg-address-bluetoothmac).
   deriving (Show, Eq, Enum, Bounded, Data, Typeable)
 
--- | Attribute Status for Delta certificates
+-- | Attribute status in Delta Platform Certificates.
 data AttributeStatus
-  = ASAdded    -- Component was added
-  | ASRemoved  -- Component was removed
-  | ASModified -- Component was modified
+  = ASAdded    -- ^ Component was added to the platform.
+  | ASRemoved  -- ^ Component was removed from the platform.
+  | ASModified -- ^ Component was modified.
   deriving (Show, Eq, Enum, Bounded, Data, Typeable)
 
 -- | Property structure for platform properties
@@ -281,50 +314,67 @@ data CertificateIdentifier = CertificateIdentifier
   , certSerial :: !Integer     -- Certificate serial number
   } deriving (Show, Eq, Data, Typeable)
 
--- | Common Criteria Level certification information
+-- | Complete Common Criteria certification record.
 data CommonCriteriaLevel = CommonCriteriaLevel
-  { ccLevel :: !EvaluationAssuranceLevel    -- EAL level (1-7)
-  , ccPlus :: !Bool                         -- EAL Plus designation
-  , ccProtectionProfile :: !(Maybe ProtectionProfile) -- Protection Profile
-  , ccSecurityTarget :: !(Maybe SecurityTarget)       -- Security Target
-  , ccCertificateNumber :: !(Maybe B.ByteString)     -- CC certificate number
-  , ccValidationDate :: !(Maybe DateTime)             -- Validation date
-  , ccEvaluationFacility :: !(Maybe B.ByteString)    -- Evaluation facility
-  , ccDescription :: !(Maybe B.ByteString)           -- Additional description
+  { ccLevel :: !EvaluationAssuranceLevel
+    -- ^ Evaluation Assurance Level (EAL 1–7).
+  , ccPlus :: !Bool
+    -- ^ EAL Plus augmentation designation.
+  , ccProtectionProfile :: !(Maybe ProtectionProfile)
+    -- ^ Protection Profile used for evaluation (OPTIONAL).
+  , ccSecurityTarget :: !(Maybe SecurityTarget)
+    -- ^ Security Target document (OPTIONAL).
+  , ccCertificateNumber :: !(Maybe B.ByteString)
+    -- ^ CC certificate or validation report number (OPTIONAL).
+  , ccValidationDate :: !(Maybe DateTime)
+    -- ^ Date the evaluation was completed (OPTIONAL).
+  , ccEvaluationFacility :: !(Maybe B.ByteString)
+    -- ^ Name of the evaluation facility (OPTIONAL).
+  , ccDescription :: !(Maybe B.ByteString)
+    -- ^ Additional description (OPTIONAL).
   } deriving (Show, Eq, Data, Typeable)
 
 -- * Other Certification Support
 
--- | Other certification types
+-- | Known certification programme types.
 data CertificationType
-  = NIST_CAVP        -- NIST Cryptographic Algorithm Validation Program
-  | NIAP_CCEVS       -- NIAP Common Criteria Evaluation and Validation Scheme  
-  | CSE_CCEF         -- CSE Common Criteria Evaluation Facility (Canada)
-  | BSI_CC           -- BSI Common Criteria (Germany)
-  | ANSSI_CC         -- ANSSI Common Criteria (France)
-  | CESG_CPA         -- CESG Commercial Product Assurance (UK)
-  | JISEC_CC         -- JISEC Common Criteria (Japan)
-  | KECS_CC          -- KECS Common Criteria (South Korea)
-  | Other B.ByteString -- Other certification type
+  = NIST_CAVP          -- ^ NIST Cryptographic Algorithm Validation Program (USA).
+  | NIAP_CCEVS         -- ^ NIAP Common Criteria Evaluation and Validation Scheme (USA).
+  | CSE_CCEF           -- ^ CSE Common Criteria Evaluation Facility (Canada).
+  | BSI_CC             -- ^ BSI Common Criteria (Germany).
+  | ANSSI_CC           -- ^ ANSSI Common Criteria (France).
+  | CESG_CPA           -- ^ CESG Commercial Product Assurance (UK).
+  | JISEC_CC           -- ^ JISEC Common Criteria (Japan).
+  | KECS_CC            -- ^ KECS Common Criteria (South Korea).
+  | Other B.ByteString -- ^ Other certification type (free-form identifier).
   deriving (Show, Eq, Data, Typeable)
 
--- | Other certification information
+-- | Certification information from a non-FIPS, non-CC programme.
 data OtherCertification = OtherCertification
-  { ocType :: !CertificationType         -- Certification type
-  , ocLevel :: !(Maybe B.ByteString)     -- Certification level/grade
-  , ocCertificateNumber :: !(Maybe B.ByteString) -- Certificate number
-  , ocValidationDate :: !(Maybe DateTime) -- Validation date
-  , ocDescription :: !(Maybe B.ByteString) -- Description
+  { ocType :: !CertificationType
+    -- ^ Certification programme type.
+  , ocLevel :: !(Maybe B.ByteString)
+    -- ^ Certification level or grade (OPTIONAL).
+  , ocCertificateNumber :: !(Maybe B.ByteString)
+    -- ^ Certificate or validation report number (OPTIONAL).
+  , ocValidationDate :: !(Maybe DateTime)
+    -- ^ Date the certification was issued (OPTIONAL).
+  , ocDescription :: !(Maybe B.ByteString)
+    -- ^ Free-form description (OPTIONAL).
   } deriving (Show, Eq, Data, Typeable)
 
 -- * Combined Certification Structure
 
--- | Complete certification information structure
+-- | Aggregate certification information combining all programme results.
 data CertificationInfo = CertificationInfo
-  { ciFips :: !(Maybe FIPSLevel)                -- FIPS 140-2/3 certification
-  , ciCommonCriteria :: !(Maybe CommonCriteriaLevel) -- Common Criteria certification
-  , ciOtherCertifications :: ![OtherCertification]   -- Other certifications
-  , ciIsCritical :: !Bool                       -- Critical extension flag
+  { ciFips :: !(Maybe FIPSLevel)
+    -- ^ FIPS 140-2\/3 certification result (OPTIONAL).
+  , ciCommonCriteria :: !(Maybe CommonCriteriaLevel)
+    -- ^ Common Criteria certification result (OPTIONAL).
+  , ciOtherCertifications :: ![OtherCertification]
+    -- ^ Results from other certification programmes.
+  , ciIsCritical :: !Bool
+    -- ^ Whether this certification info is marked as a critical extension.
   } deriving (Show, Eq, Data, Typeable)
 
 -- * ASN.1 Encoding Support

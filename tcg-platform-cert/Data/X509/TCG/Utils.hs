@@ -134,8 +134,10 @@ applyPlatformInfoChanges (Right config) infoChanges = Right $ config
 -- This data type represents the hierarchical relationship between
 -- components in a platform certificate.
 data ComponentTreeUtils = ComponentTreeUtils
-  { ctComponents :: [ComponentIdentifierV2]     -- ^ All components in the tree
-  , ctHierarchy :: [(ComponentIdentifierV2, [ComponentIdentifierV2])]  -- ^ Parent-child relationships
+  { ctComponents :: [ComponentIdentifierV2]
+    -- ^ All components in the tree
+  , ctHierarchy :: [(ComponentIdentifierV2, [ComponentIdentifierV2])]
+    -- ^ Parent-child relationships
   } deriving (Show, Eq)
 
 

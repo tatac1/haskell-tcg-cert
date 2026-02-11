@@ -85,15 +85,24 @@ maxPlatformConfigBytes = 1024 * 1024
 -- This is similar to AttributeCertificateInfo but specifically for Platform Certificates
 -- as defined in the IWG specification.
 data PlatformCertificateInfo = PlatformCertificateInfo
-  { pciVersion :: Int, -- Must be 2 (v2)
-    pciHolder :: Holder,
-    pciIssuer :: AttCertIssuer,
-    pciSignature :: SignatureALG,
-    pciSerialNumber :: Integer,
-    pciValidity :: AttCertValidityPeriod,
-    pciAttributes :: Attributes,
-    pciIssuerUniqueID :: Maybe UniqueID,
-    pciExtensions :: Extensions
+  { pciVersion :: Int
+    -- ^ Attribute certificate version. Must be 1 (encoding v2 per RFC 5755).
+  , pciHolder :: Holder
+    -- ^ Certificate holder, referencing the TPM Endorsement Key certificate.
+  , pciIssuer :: AttCertIssuer
+    -- ^ Attribute certificate issuer (V2 form with GeneralNames).
+  , pciSignature :: SignatureALG
+    -- ^ Signature algorithm used to sign this certificate.
+  , pciSerialNumber :: Integer
+    -- ^ Unique serial number assigned by the issuer.
+  , pciValidity :: AttCertValidityPeriod
+    -- ^ Validity period (notBefore, notAfter).
+  , pciAttributes :: Attributes
+    -- ^ TCG platform attributes (credential type, security assertions, components, etc.).
+  , pciIssuerUniqueID :: Maybe UniqueID
+    -- ^ Issuer unique identifier (OPTIONAL, rarely used).
+  , pciExtensions :: Extensions
+    -- ^ X.509v3 extensions (AKI, SAN, Certificate Policies, etc.).
   }
   deriving (Show, Eq)
 
@@ -157,11 +166,16 @@ type SignedPlatformCertificate = SignedExact PlatformCertificateInfo
 --
 -- Contains basic platform configuration information without status tracking.
 data PlatformConfiguration = PlatformConfiguration
-  { pcManufacturer :: B.ByteString,
-    pcModel :: B.ByteString,
-    pcVersion :: B.ByteString,
-    pcSerial :: B.ByteString,
-    pcComponents :: [ComponentIdentifier]
+  { pcManufacturer :: B.ByteString
+    -- ^ Platform manufacturer name (UTF8String).
+  , pcModel :: B.ByteString
+    -- ^ Platform model identifier (UTF8String).
+  , pcVersion :: B.ByteString
+    -- ^ Platform version string (UTF8String).
+  , pcSerial :: B.ByteString
+    -- ^ Platform serial number (UTF8String).
+  , pcComponents :: [ComponentIdentifier]
+    -- ^ List of platform component identifiers.
   }
   deriving (Show, Eq)
 
@@ -206,11 +220,16 @@ data ExtendedPlatformConfiguration = ExtendedPlatformConfiguration
 --
 -- Enhanced version with component status tracking for Delta Platform Certificates.
 data PlatformConfigurationV2 = PlatformConfigurationV2
-  { pcv2Manufacturer :: B.ByteString,
-    pcv2Model :: B.ByteString,
-    pcv2Version :: B.ByteString,
-    pcv2Serial :: B.ByteString,
-    pcv2Components :: [(ComponentIdentifierV2, ComponentStatus)]
+  { pcv2Manufacturer :: B.ByteString
+    -- ^ Platform manufacturer name (UTF8String).
+  , pcv2Model :: B.ByteString
+    -- ^ Platform model identifier (UTF8String).
+  , pcv2Version :: B.ByteString
+    -- ^ Platform version string (UTF8String).
+  , pcv2Serial :: B.ByteString
+    -- ^ Platform serial number (UTF8String).
+  , pcv2Components :: [(ComponentIdentifierV2, ComponentStatus)]
+    -- ^ List of V2 component identifiers paired with their delta status.
   }
   deriving (Show, Eq)
 
@@ -232,10 +251,14 @@ data ComponentStatus
 --
 -- High-level platform identification and characteristics.
 data PlatformInfo = PlatformInfo
-  { piManufacturer :: B.ByteString,
-    piModel :: B.ByteString,
-    piSerial :: B.ByteString,
-    piVersion :: B.ByteString
+  { piManufacturer :: B.ByteString
+    -- ^ Platform manufacturer name.
+  , piModel :: B.ByteString
+    -- ^ Platform model identifier.
+  , piSerial :: B.ByteString
+    -- ^ Platform serial number.
+  , piVersion :: B.ByteString
+    -- ^ Platform version string.
   }
   deriving (Show, Eq)
 
@@ -243,26 +266,36 @@ data PlatformInfo = PlatformInfo
 --
 -- Contains TPM-specific identification and specification information.
 data TPMInfo = TPMInfo
-  { tpmModel :: B.ByteString,
-    tpmVersion :: TPMVersion,
-    tpmSpecification :: TPMSpecification
+  { tpmModel :: B.ByteString
+    -- ^ TPM model identifier.
+  , tpmVersion :: TPMVersion
+    -- ^ TPM firmware version information.
+  , tpmSpecification :: TPMSpecification
+    -- ^ TPM specification family, level, and revision.
   }
   deriving (Show, Eq)
 
--- | TPM Version information
+-- | TPM Version information (major.minor.revMajor.revMinor).
 data TPMVersion = TPMVersion
-  { tpmVersionMajor :: Int,
-    tpmVersionMinor :: Int,
-    tpmVersionRevMajor :: Int,
-    tpmVersionRevMinor :: Int
+  { tpmVersionMajor :: Int
+    -- ^ Major version number.
+  , tpmVersionMinor :: Int
+    -- ^ Minor version number.
+  , tpmVersionRevMajor :: Int
+    -- ^ Revision major number.
+  , tpmVersionRevMinor :: Int
+    -- ^ Revision minor number.
   }
   deriving (Show, Eq)
 
--- | TPM Specification information
+-- | TPM Specification information (family, level, revision).
 data TPMSpecification = TPMSpecification
-  { tpmSpecFamily :: B.ByteString,
-    tpmSpecLevel :: Int,
-    tpmSpecRevision :: Int
+  { tpmSpecFamily :: B.ByteString
+    -- ^ TPM specification family (e.g., @\"2.0\"@).
+  , tpmSpecLevel :: Int
+    -- ^ Specification level.
+  , tpmSpecRevision :: Int
+    -- ^ Specification revision number.
   }
   deriving (Show, Eq)
 
