@@ -36,7 +36,6 @@ module Data.X509.TCG.Utils
   ) where
 
 import Data.Maybe (mapMaybe, fromMaybe)
-import Data.List (foldl')
 import Data.X509.Attribute (Attributes(..), Attribute(..), AttributeValue)
 import Data.X509.TCG.Platform
 import Data.X509.TCG.Delta hiding (applyDeltaToBase)

@@ -50,7 +50,6 @@ import Data.Map.Strict (Map)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import Data.List (foldl')
 import Data.Bits ((.&.), (.|.), shiftL)
 
 import Data.ASN1.BinaryEncoding (DER(..))
