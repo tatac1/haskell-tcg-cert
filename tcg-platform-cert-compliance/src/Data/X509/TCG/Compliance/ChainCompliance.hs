@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
@@ -27,6 +28,9 @@ module Data.X509.TCG.Compliance.ChainCompliance
   , computeFinalState        -- ^ CHAIN-005
   ) where
 
+#if !MIN_VERSION_base(4,20,0)
+import Data.List (foldl')
+#endif
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.ByteString as B

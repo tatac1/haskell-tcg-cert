@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
@@ -35,6 +36,9 @@ module Data.X509.TCG.Utils
     formatError,
   ) where
 
+#if !MIN_VERSION_base(4,20,0)
+import Data.List (foldl')
+#endif
 import Data.Maybe (mapMaybe, fromMaybe)
 import Data.X509.Attribute (Attributes(..), Attribute(..), AttributeValue)
 import Data.X509.TCG.Platform

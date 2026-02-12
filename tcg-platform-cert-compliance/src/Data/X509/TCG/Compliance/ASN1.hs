@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
@@ -44,6 +45,9 @@ module Data.X509.TCG.Compliance.ASN1
   , parseTargetingInformation
   ) where
 
+#if !MIN_VERSION_base(4,20,0)
+import Data.List (foldl')
+#endif
 import qualified Data.ByteString as B
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
