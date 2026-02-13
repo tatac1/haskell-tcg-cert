@@ -6,7 +6,7 @@ Haskell libraries and CLI tool for generating, validating, and testing [TCG Plat
 
 | Package | Description |
 |---------|-------------|
-| **tcg-platform-cert** | Core data types, ASN.1/DER encoding and decoding |
+| **tcg-platform-cert** | Core data types, ASN.1/DER encoding/decoding, and input validation |
 | **tcg-platform-cert-compliance** | IWG v1.1 compliance framework (66 checks + chain compliance) |
 | **tcg-platform-cert-util** | CLI tool for generation, lint, compliance, and inspection |
 | **tcg-platform-cert-validation** | Certificate validation and signature verification |
@@ -48,6 +48,7 @@ tcg-platform-cert-util <command> [options]
   components      Extract component information
   compliance      Run IWG v1.1 compliance checks
   lint            Validate a YAML configuration before generation
+  hwinfo          Display host hardware information
   create-config   Create an example YAML configuration file
   convert         Convert paccor JSON to YAML format
 ```
@@ -98,6 +99,9 @@ tcg-platform-cert-util generate \
 | `--hash ALG` | | No | `sha256` / `sha384` / `sha512` (default: `sha384`) |
 | `--key-size BITS` | | No | RSA key size (default: 2048) |
 | `--validity DAYS` | | No | Validity period (default: 365) |
+| `--serial-number NUM` | | No | Certificate serial number (default: 1) |
+| `--not-before YYYYMMDD` | | No | Validity start date (e.g. 20180101) |
+| `--not-after YYYYMMDD` | | No | Validity end date (e.g. 20680101) |
 | `--skip-compliance` | | No | Skip pre-issuance compliance checks |
 | `--compat` | | No | OperationalCompatibility mode (default) |
 | `--strict-v11` | | No | Strict IWG v1.1 mode |
@@ -333,8 +337,10 @@ Key type is auto-detected. Ed25519/Ed448 use intrinsic hashing (`--hash` is igno
 ## Documentation
 
 - **[User Guide](docs/user-guide.md)** -- YAML reference, lint checks, compliance modes, troubleshooting
-- **[Compliance Test Guide](docs/compliance-test-guide.md)** -- full 66-check specification with normative interpretation
+- **[Compliance Test Guide](docs/compliance-test-guide.adoc)** -- full 66-check specification with normative interpretation
 - **[Examples](tcg-platform-cert-util/examples/)** -- ready-to-use YAML configurations
+- **[Fuzzer & Paccor Test Guide](docs/fuzzer-test-guide.md)** -- compliance fuzzer mutations and paccor integration tests
+- **API Documentation** -- Haddock docs available for core modules (`cabal haddock tcg-platform-cert`)
 
 ## Reference Specifications
 
@@ -344,10 +350,11 @@ Key type is auto-detected. Ed25519/Ed448 use intrinsic hashing (`--hash` is igno
 - [SMBIOS Component Class Registry v1.01](docs/SMBIOS-Component-Class-Registry_v1.01_finalpublication.pdf)
 - [PCIe Component Class Registry v1 r18](docs/TCG_PCIe_Component_Class_Registry_v1_r18_pub10272021.pdf)
 - [Storage Component Class Registry v1.0 rev22](docs/Storage-Component-Class-Registry-Version-1.0-Revision-22_pub.pdf)
+- [TCG Platform Certificate Profile v2.1](docs/TCG_Platform_Certificate_Profile_2.1_Pub.pdf)
 
 ## Requirements
 
-Depends on [crypton-certificate](https://github.com/kazu-yamamoto/crypton-certificate) with Attribute Certificate support.
+Depends on [crypton-certificate](https://github.com/tatac1/crypton-certificate) with Attribute Certificate support.
 
 ## License
 
