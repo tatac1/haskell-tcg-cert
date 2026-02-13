@@ -19,6 +19,7 @@ This guide covers the full capabilities of `tcg-platform-cert-util`, a command-l
   - [generate-delta](#generate-delta)
   - [create-config](#create-config)
   - [convert](#convert)
+  - [hwinfo](#hwinfo)
 - [Compliance Modes](#compliance-modes)
 - [Pre-Issuance Compliance](#pre-issuance-compliance)
 - [Lint Check Reference](#lint-check-reference)
@@ -342,6 +343,9 @@ tcg-platform-cert-util generate \
 | `--hash ALG` | | `sha384` | Hash algorithm (`sha256`/`sha384`/`sha512`) |
 | `--key-size BITS` | | `2048` | RSA key size |
 | `--validity DAYS` | | `365` | Certificate validity period |
+| `--serial-number NUM` | | `1` | Certificate serial number |
+| `--not-before YYYYMMDD` | | (current date) | Validity start date (e.g. `20180101`) |
+| `--not-after YYYYMMDD` | | (from `--validity`) | Validity end date (e.g. `20680101`) |
 | `--skip-compliance` | | | Skip pre-issuance compliance checks |
 | `--compat` | | (default) | OperationalCompatibility mode |
 | `--strict-v11` | | | Strict IWG v1.1 mode |
@@ -470,6 +474,9 @@ tcg-platform-cert-util generate-delta \
 | `--config FILE` | `-f` | | Delta YAML configuration |
 | `--output FILE` | `-o` | `delta-cert.pem` | Output file |
 | `--hash ALG` | | `sha384` | Hash algorithm |
+| `--serial-number NUM` | | `1` | Certificate serial number |
+| `--not-before YYYYMMDD` | | (current date) | Validity start date (e.g. `20180101`) |
+| `--not-after YYYYMMDD` | | (from `--validity`) | Validity end date (e.g. `20680101`) |
 
 ### create-config
 
@@ -489,6 +496,33 @@ Converts [paccor](https://github.com/nsacyber/paccor) (NSA Platform Attribute Ce
 tcg-platform-cert-util convert paccor-output.json --output platform.yaml
 tcg-platform-cert-util convert --from-paccor device.json
 ```
+
+### hwinfo
+
+Displays hardware information collected from the current host. Useful for understanding what platform data is available for certificate generation.
+
+```bash
+tcg-platform-cert-util hwinfo
+tcg-platform-cert-util hwinfo --verbose
+tcg-platform-cert-util hwinfo --json
+```
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `--verbose` | `-v` | Include addresses, SMBIOS details, and TCG hex data |
+| `--json` | | Machine-readable JSON output |
+
+**Collected information:**
+
+| Category | Data |
+| --- | --- |
+| Platform | Manufacturer, model, version, serial number, UUID, SKU |
+| CPU | Processor information |
+| Memory | Memory device details |
+| Network | Network interfaces and MAC addresses |
+| Storage | Storage device information |
+| Baseboard/Chassis | Baseboard and chassis details |
+| TPM | Trusted Platform Module information |
 
 ---
 
